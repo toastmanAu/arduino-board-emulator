@@ -19,4 +19,10 @@ pub enum BoardGhostError {
 
     #[error("Project directory does not exist: {0:?}")]
     ProjectNotFound(PathBuf),
+
+    #[error("arduino-cli preprocess failed (exit {exit}): {stderr}")]
+    PreprocessFailed { exit: i32, stderr: String },
+
+    #[error("arduino-cli not found in PATH; run `boardghost doctor` to diagnose")]
+    ArduinoCliMissing,
 }
