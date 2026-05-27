@@ -49,8 +49,12 @@ impl BoardProfile {
         Self::load(&path)
     }
 
-    pub fn list_in(boards_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-        let mut out: Vec<PathBuf> = std::fs::read_dir(boards_dir)?
+    pub fn list_in(boards_dir: &Path) -> Result<Vec<PathBuf>, BoardGhostError> {
+        let mut out: Vec<PathBuf> = std::fs::read_dir(boards_dir)
+            .map_err(|e| BoardGhostError::BoardListFailed {
+                path: boards_dir.to_path_buf(),
+                reason: e.to_string(),
+            })?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("toml"))

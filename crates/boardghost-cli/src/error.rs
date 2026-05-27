@@ -10,4 +10,7 @@ pub enum BoardGhostError {
 
     #[error("Board profile at {path:?} is malformed: {reason}")]
     BoardProfileMalformed { path: PathBuf, reason: String },
+
+    #[error("Could not list board profiles in {path:?}: {reason}")]
+    BoardListFailed { path: PathBuf, reason: String },
 }
