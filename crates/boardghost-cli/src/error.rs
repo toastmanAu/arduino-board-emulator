@@ -13,4 +13,10 @@ pub enum BoardGhostError {
 
     #[error("Could not list board profiles in {path:?}: {reason}")]
     BoardListFailed { path: PathBuf, reason: String },
+
+    #[error("No sketch found in {dir:?}. Expected sketch.ino or src/main.cpp")]
+    SketchNotFound { dir: PathBuf },
+
+    #[error("Project directory does not exist: {0:?}")]
+    ProjectNotFound(PathBuf),
 }

@@ -1,5 +1,6 @@
 pub mod board;
 pub mod cli;
+pub mod discover;
 pub mod doctor;
 pub mod error;
 
