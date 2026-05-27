@@ -17,15 +17,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build libsdl2-dev
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/.local/bin sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/.local/bin" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install Arduino libs
         run: |
           arduino-cli config init
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
-          arduino-cli core install arduino:avr
           arduino-cli lib install LovyanGFX
           arduino-cli lib install lvgl
 
