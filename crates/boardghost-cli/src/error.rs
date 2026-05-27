@@ -25,4 +25,11 @@ pub enum BoardGhostError {
 
     #[error("arduino-cli not found in PATH; run `boardghost doctor` to diagnose")]
     ArduinoCliMissing,
+
+    #[error("Library {name} is not shimmed in M1.\n  \
+             Allowed: LovyanGFX, lvgl, Adafruit_GFX.\n  \
+             To skip this code in sim builds:\n    \
+             #ifndef BOARDGHOST_SIM\n      // your real-hardware code\n    \
+             #endif")]
+    UnsupportedLibrary { name: String },
 }

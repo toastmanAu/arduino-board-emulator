@@ -3,6 +3,7 @@ pub mod cli;
 pub mod discover;
 pub mod doctor;
 pub mod error;
+pub mod libraries;
 pub mod preprocess;
 
 pub use board::{BoardProfile, DisplayConfig, TouchConfig};
