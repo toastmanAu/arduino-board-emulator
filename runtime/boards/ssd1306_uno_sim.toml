@@ -1,0 +1,11 @@
+name              = "ssd1306_uno_sim"
+description       = "Arduino Uno with SSD1306 128x64 mono OLED"
+arduino_fqbn_hint = "arduino:avr:uno"
+
+[display]
+controller   = "SSD1306"
+width        = 128
+height       = 64
+rotation     = 0
+bus          = "i2c"
+color_depth  = 1

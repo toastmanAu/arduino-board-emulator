@@ -1,0 +1,14 @@
+name              = "ili9488_esp32s3_sim"
+description       = "ESP32-S3 with ILI9488 480x320 SPI display"
+arduino_fqbn_hint = "esp32:esp32:esp32s3"
+
+[display]
+controller   = "ILI9488"
+width        = 480
+height       = 320
+rotation     = 1
+bus          = "spi"
+color_depth  = 16
+
+[touch]
+controller   = "xpt2046"
