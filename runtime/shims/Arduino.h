@@ -3,6 +3,10 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
+#include "WString.h"
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 

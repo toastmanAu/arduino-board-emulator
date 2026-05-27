@@ -12,6 +12,7 @@ add_executable(runtime_tests
     test_smoke.cpp
     test_timing.cpp
     test_pin_state.cpp
+    test_string.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 
