@@ -8,6 +8,7 @@ pub mod doctor;
 pub mod error;
 pub mod libraries;
 pub mod preprocess;
+pub mod run;
 
 pub use board::{BoardProfile, DisplayConfig, TouchConfig};
 pub use cli::{BuildProfile, Cli, Command};
