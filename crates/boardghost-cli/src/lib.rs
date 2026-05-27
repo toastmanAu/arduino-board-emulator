@@ -1,6 +1,8 @@
 pub mod board;
+pub mod build;
 pub mod cli;
 pub mod codegen;
+pub mod compile;
 pub mod discover;
 pub mod doctor;
 pub mod error;

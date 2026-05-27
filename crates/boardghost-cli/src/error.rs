@@ -32,4 +32,10 @@ pub enum BoardGhostError {
              #ifndef BOARDGHOST_SIM\n      // your real-hardware code\n    \
              #endif")]
     UnsupportedLibrary { name: String },
+
+    #[error("CMake configure failed (exit {exit}): {stderr}")]
+    CmakeConfigureFailed { exit: i32, stderr: String },
+
+    #[error("CMake build failed (exit {exit}): {stderr}")]
+    CmakeBuildFailed { exit: i32, stderr: String },
 }
