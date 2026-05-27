@@ -40,10 +40,15 @@ pub fn run_build(
     // Stage 4: Codegen
     let out_dir = project.join(".boardghost").join(&board.name);
     std::fs::create_dir_all(&out_dir).context("create .boardghost dir")?;
+    // Canonicalize paths so CMakeLists.txt uses absolute paths regardless of CWD.
+    let sketch_cpp_abs = preprocessed.canonicalize()
+        .with_context(|| format!("canonicalize preprocessed file {:?}", preprocessed))?;
+    let runtime_dir_abs = runtime_dir.canonicalize()
+        .with_context(|| format!("canonicalize runtime dir {:?}", runtime_dir))?;
     let _ = codegen::generate_cmake(&codegen::CodegenInput {
-        sketch_cpp:  preprocessed,
+        sketch_cpp:  sketch_cpp_abs,
         board:       &board,
-        runtime_dir: runtime_dir.to_path_buf(),
+        runtime_dir: runtime_dir_abs,
         release,
         out_dir:     out_dir.clone(),
     })?;
