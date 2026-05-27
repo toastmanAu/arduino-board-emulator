@@ -1,0 +1,21 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# CMake / C++ build artifacts
+build/
+.boardghost/
+*.o
+*.a
+*.so
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Node (will be used by launcher in Plan 2)
+node_modules/
+dist/
