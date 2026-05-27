@@ -11,6 +11,7 @@ option(BOARDGHOST_BUILD_TESTS "Build unit tests" ON)
 # --- libsim_runtime: shims + runtime, no main() ---
 add_library(sim_runtime STATIC
     src/sim_runtime.cpp
+    src/sim_serial.cpp
 )
 
 target_include_directories(sim_runtime

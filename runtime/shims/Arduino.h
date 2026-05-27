@@ -32,3 +32,39 @@ void analogWrite(uint8_t pin, int value);
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+class SerialClass {
+public:
+    void begin(unsigned long /*baud*/) {}
+    void end() {}
+
+    size_t print(const char* s);
+    size_t print(const String& s);
+    size_t print(int v);
+    size_t print(unsigned int v);
+    size_t print(long v);
+    size_t print(unsigned long v);
+    size_t print(double v, int decimals = 2);
+    size_t print(char c);
+
+    size_t println();
+    size_t println(const char* s);
+    size_t println(const String& s);
+    size_t println(int v);
+    size_t println(unsigned int v);
+    size_t println(long v);
+    size_t println(unsigned long v);
+    size_t println(double v, int decimals = 2);
+
+    size_t printf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+    size_t write(uint8_t b);
+    size_t write(const uint8_t* buf, size_t n);
+
+    int    available();
+    int    read();
+    void   flush();
+};
+
+extern SerialClass Serial;
+#endif
