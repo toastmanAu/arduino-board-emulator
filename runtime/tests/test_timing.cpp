@@ -12,7 +12,10 @@ protected:
 
 TEST_F(TimingTest, MillisStartsNearZero) {
     auto m = millis();
-    EXPECT_LT(m, 50u);  // <50ms after init
+    // SDL_Init (called in sim_runtime_init since Task 9) can take ~100ms
+    // on some hosts. 500ms is a generous bound that still catches gross bugs
+    // (e.g., g_start not being set in init).
+    EXPECT_LT(m, 500u);
 }
 
 TEST_F(TimingTest, MillisAdvancesMonotonically) {
