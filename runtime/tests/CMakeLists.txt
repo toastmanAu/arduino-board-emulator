@@ -14,6 +14,7 @@ add_executable(runtime_tests
     test_pin_state.cpp
     test_string.cpp
     test_serial.cpp
+    test_bus_logging.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 

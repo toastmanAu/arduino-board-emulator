@@ -12,6 +12,8 @@ option(BOARDGHOST_BUILD_TESTS "Build unit tests" ON)
 add_library(sim_runtime STATIC
     src/sim_runtime.cpp
     src/sim_serial.cpp
+    src/sim_spi.cpp
+    src/sim_wire.cpp
 )
 
 target_include_directories(sim_runtime
