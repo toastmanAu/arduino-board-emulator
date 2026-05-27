@@ -34,6 +34,9 @@ pub fn run_build(
         runtime_abs.join("displays"),
         runtime_abs.join("shims"),
         runtime_abs.join("third_party/LovyanGFX/src"),
+        // LVGL v9: sketch can include <lvgl.h> and <sim_lvgl.h>
+        runtime_abs.join("third_party/lvgl"),
+        runtime_abs.join("include"),
     ];
     let preprocessed = preprocess::preprocess(
         &discovered.entry,
