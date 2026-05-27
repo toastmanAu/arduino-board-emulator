@@ -1,4 +1,4 @@
-use boardghost::discover::{discover, DiscoveredProject};
+use boardghost::discover::discover;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
