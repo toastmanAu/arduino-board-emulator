@@ -3,12 +3,32 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <thread>
 
 namespace {
     using clock_type = std::chrono::steady_clock;
     std::atomic<int>         g_should_quit{0};
     clock_type::time_point   g_start;
+
+    struct PinState {
+        uint8_t mode    = 0;   // INPUT
+        uint8_t digital = 0;
+        int     analog  = 0;
+    };
+
+    constexpr size_t MAX_PINS = 64;
+    PinState g_pins[MAX_PINS];
+
+    void load_analog_env_overrides() {
+        for (size_t p = 0; p < MAX_PINS; ++p) {
+            char key[32];
+            std::snprintf(key, sizeof(key), "BOARDGHOST_ANALOG_%zu", p);
+            if (const char* v = std::getenv(key)) {
+                g_pins[p].analog = std::atoi(v);
+            }
+        }
+    }
 }
 
 extern "C" {
@@ -16,6 +36,8 @@ extern "C" {
 void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     g_should_quit.store(0);
     g_start = clock_type::now();
+    for (auto& p : g_pins) p = PinState{};
+    load_analog_env_overrides();
 }
 
 void sim_runtime_shutdown(void) {
@@ -52,6 +74,31 @@ void delay(uint32_t ms) {
 
 void delayMicroseconds(uint32_t us) {
     std::this_thread::sleep_for(std::chrono::microseconds(us));
+}
+
+void pinMode(uint8_t pin, uint8_t mode) {
+    if (pin >= MAX_PINS) return;
+    g_pins[pin].mode = mode;
+}
+
+void digitalWrite(uint8_t pin, uint8_t value) {
+    if (pin >= MAX_PINS) return;
+    g_pins[pin].digital = value ? 1 : 0;
+}
+
+int digitalRead(uint8_t pin) {
+    if (pin >= MAX_PINS) return 0;
+    return g_pins[pin].digital;
+}
+
+int analogRead(uint8_t pin) {
+    if (pin >= MAX_PINS) return 0;
+    return g_pins[pin].analog;
+}
+
+void analogWrite(uint8_t pin, int value) {
+    if (pin >= MAX_PINS) return;
+    g_pins[pin].analog = value;
 }
 
 } // extern "C"
