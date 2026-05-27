@@ -52,13 +52,13 @@ void sim_runtime_shutdown(void) {
 }
 
 void sim_pump_events(void) {
-    SDL_Event ev;
-    while (SDL_PollEvent(&ev)) {
-        if (ev.type == SDL_QUIT) g_should_quit.store(1);
-        if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) {
-            g_should_quit.store(1);
-        }
-    }
+    // Pump the OS event queue so any pending events are visible.
+    SDL_PumpEvents();
+    // Extract ONLY SDL_QUIT events; leave mouse/keyboard/window events in
+    // the queue so LVGL's input drivers (and any other consumer) can see them.
+    SDL_Event events[8];
+    int n = SDL_PeepEvents(events, 8, SDL_GETEVENT, SDL_QUIT, SDL_QUIT);
+    if (n > 0) g_should_quit.store(1);
 }
 
 int sim_should_quit(void) {
