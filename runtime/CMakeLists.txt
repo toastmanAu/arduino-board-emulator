@@ -20,6 +20,7 @@ target_include_directories(sim_runtime
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/shims
+        ${CMAKE_CURRENT_SOURCE_DIR}/displays
 )
 
 target_compile_definitions(sim_runtime PUBLIC BOARDGHOST_SIM=1)
@@ -49,8 +50,10 @@ file(GLOB LGFX_SDL CONFIGURE_DEPENDS
     ${LGFX_DIR}/src/lgfx/v1/platforms/sdl/*.cpp
 )
 
-# Font / utility C sources
+# Font / utility C sources — include IPA and efont subdirs for full font coverage
 file(GLOB LGFX_FONTS    CONFIGURE_DEPENDS ${LGFX_DIR}/src/lgfx/Fonts/*.c)
+file(GLOB LGFX_FONTS_IPA    CONFIGURE_DEPENDS ${LGFX_DIR}/src/lgfx/Fonts/IPA/*.c)
+file(GLOB LGFX_FONTS_EFONT  CONFIGURE_DEPENDS ${LGFX_DIR}/src/lgfx/Fonts/efont/*.c)
 file(GLOB LGFX_UTILITY  CONFIGURE_DEPENDS ${LGFX_DIR}/src/lgfx/utility/*.c)
 
 add_library(lovyangfx_pc STATIC
@@ -60,6 +63,8 @@ add_library(lovyangfx_pc STATIC
     ${LGFX_V1_MISC}
     ${LGFX_SDL}
     ${LGFX_FONTS}
+    ${LGFX_FONTS_IPA}
+    ${LGFX_FONTS_EFONT}
     ${LGFX_UTILITY}
 )
 target_include_directories(lovyangfx_pc PUBLIC ${LGFX_DIR}/src)
