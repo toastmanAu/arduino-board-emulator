@@ -24,6 +24,13 @@ target_include_directories(sim_runtime
 
 target_compile_definitions(sim_runtime PUBLIC BOARDGHOST_SIM=1)
 
+find_package(SDL2 REQUIRED)
+target_link_libraries(sim_runtime PUBLIC SDL2::SDL2)
+if(NOT TARGET SDL2::SDL2)
+    target_include_directories(sim_runtime PUBLIC ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(sim_runtime PUBLIC ${SDL2_LIBRARIES})
+endif()
+
 # sim_main is a separate object library; sketch builds link it,
 # unit-test builds do not (they bring their own gtest_main).
 add_library(sim_main OBJECT src/sim_main.cpp)

@@ -1,5 +1,6 @@
 #include "sim_runtime.h"
 #include <Arduino.h>
+#include <SDL.h>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -38,14 +39,23 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     g_start = clock_type::now();
     for (auto& p : g_pins) p = PinState{};
     load_analog_env_overrides();
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+        std::fprintf(stderr, "[boardghost] SDL_Init failed: %s\n", SDL_GetError());
+    }
 }
 
 void sim_runtime_shutdown(void) {
-    // Nothing yet.
+    SDL_Quit();
 }
 
 void sim_pump_events(void) {
-    // Wired in Task 9.
+    SDL_Event ev;
+    while (SDL_PollEvent(&ev)) {
+        if (ev.type == SDL_QUIT) g_should_quit.store(1);
+        if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) {
+            g_should_quit.store(1);
+        }
+    }
 }
 
 int sim_should_quit(void) {

@@ -15,6 +15,7 @@ add_executable(runtime_tests
     test_string.cpp
     test_serial.cpp
     test_bus_logging.cpp
+    test_event_pump.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 
