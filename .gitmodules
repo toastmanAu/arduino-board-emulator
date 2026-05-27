@@ -1,3 +1,6 @@
 [submodule "runtime/third_party/LovyanGFX"]
 	path = runtime/third_party/LovyanGFX
 	url = https://github.com/lovyan03/LovyanGFX.git
+[submodule "runtime/third_party/lvgl"]
+	path = runtime/third_party/lvgl
+	url = https://github.com/lvgl/lvgl.git

@@ -76,6 +76,17 @@ target_compile_options(lovyangfx_pc PRIVATE -w)
 # Make LovyanGFX headers visible to the sim runtime so user sketches can include it.
 target_link_libraries(sim_runtime PUBLIC lovyangfx_pc)
 
+# LVGL — use its own CMake. lv_conf.h sits at runtime/lv_conf.h.
+# LVGL looks for lv_conf.h via `LV_CONF_PATH` or by include search.
+set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h CACHE STRING "lv_conf path")
+set(LV_CONF_BUILD_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
+set(LV_CONF_BUILD_DISABLE_DEMOS    ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/lvgl)
+
+target_link_libraries(sim_runtime PUBLIC lvgl)
+# Make sure both LovyanGFX users and LVGL users see the lv_conf.h location.
+target_compile_definitions(sim_runtime PUBLIC LV_CONF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h)
+
 # sim_main is a separate object library; sketch builds link it,
 # unit-test builds do not (they bring their own gtest_main).
 add_library(sim_main OBJECT src/sim_main.cpp)
