@@ -25,9 +25,21 @@ pub fn run_build(
     eprintln!("→ Board:  {} ({})", board.name, board.description);
 
     // Stage 2: Preprocess
+    // Pass runtime include dirs so BoardGhost display headers (e.g. LGFX_SSD1306_SDL.hpp)
+    // are visible to the arduino-cli preprocessor's compiler.
     eprintln!("→ Preprocessing via arduino-cli...");
-    let preprocessed = preprocess::preprocess(&discovered.entry, &board.arduino_fqbn_hint)
-        .context("Stage 2: preprocess")?;
+    let runtime_abs = runtime_dir.canonicalize()
+        .with_context(|| format!("canonicalize runtime dir {:?}", runtime_dir))?;
+    let extra_includes = vec![
+        runtime_abs.join("displays"),
+        runtime_abs.join("shims"),
+        runtime_abs.join("third_party/LovyanGFX/src"),
+    ];
+    let preprocessed = preprocess::preprocess(
+        &discovered.entry,
+        &board.arduino_fqbn_hint,
+        &extra_includes,
+    ).context("Stage 2: preprocess")?;
 
     // Stage 3: Library allowlist
     // (M1 placeholder — uses #include-line scan rather than --show-properties;
@@ -43,12 +55,10 @@ pub fn run_build(
     // Canonicalize paths so CMakeLists.txt uses absolute paths regardless of CWD.
     let sketch_cpp_abs = preprocessed.canonicalize()
         .with_context(|| format!("canonicalize preprocessed file {:?}", preprocessed))?;
-    let runtime_dir_abs = runtime_dir.canonicalize()
-        .with_context(|| format!("canonicalize runtime dir {:?}", runtime_dir))?;
     let _ = codegen::generate_cmake(&codegen::CodegenInput {
         sketch_cpp:  sketch_cpp_abs,
         board:       &board,
-        runtime_dir: runtime_dir_abs,
+        runtime_dir: runtime_abs.clone(),
         release,
         out_dir:     out_dir.clone(),
     })?;

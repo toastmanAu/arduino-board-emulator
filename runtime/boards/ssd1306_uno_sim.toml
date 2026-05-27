@@ -1,6 +1,6 @@
 name              = "ssd1306_uno_sim"
 description       = "Arduino Uno with SSD1306 128x64 mono OLED"
-arduino_fqbn_hint = "arduino:avr:uno"
+arduino_fqbn_hint = "esp32:esp32:esp32s3"
 
 [display]
 controller   = "SSD1306"

@@ -3,18 +3,40 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Runs `arduino-cli compile --preprocess --fqbn <fqbn> <sketch>`.
+///
+/// `extra_include_dirs` are injected as `-I<dir>` flags via
+/// `--build-property compiler.cpp.extra_flags=...` so that BoardGhost
+/// display headers (e.g. LGFX_SSD1306_SDL.hpp) are visible to the
+/// arduino-cli preprocessor without needing an Arduino library package.
+///
 /// Returns the path to the generated preprocessed .cpp.
-pub fn preprocess(sketch: &Path, fqbn: &str) -> Result<PathBuf, BoardGhostError> {
+pub fn preprocess(
+    sketch: &Path,
+    fqbn: &str,
+    extra_include_dirs: &[PathBuf],
+) -> Result<PathBuf, BoardGhostError> {
     // Verify arduino-cli is available.
     if Command::new("arduino-cli").arg("version").output().is_err() {
         return Err(BoardGhostError::ArduinoCliMissing);
     }
 
-    let out = Command::new("arduino-cli")
-        .args(["compile", "--preprocess", "--fqbn", fqbn])
-        .arg(sketch)
-        .output()
-        .map_err(|_| BoardGhostError::ArduinoCliMissing)?;
+    // Build compiler.cpp.extra_flags from extra_include_dirs.
+    let extra_flags: String = extra_include_dirs
+        .iter()
+        .filter_map(|d| d.to_str())
+        .map(|d| format!("-I{d}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let mut cmd = Command::new("arduino-cli");
+    cmd.args(["compile", "--preprocess", "--fqbn", fqbn]);
+    if !extra_flags.is_empty() {
+        cmd.arg("--build-property")
+            .arg(format!("compiler.cpp.extra_flags={extra_flags}"));
+    }
+    cmd.arg(sketch);
+
+    let out = cmd.output().map_err(|_| BoardGhostError::ArduinoCliMissing)?;
 
     if !out.status.success() {
         return Err(BoardGhostError::PreprocessFailed {

@@ -22,7 +22,7 @@ fn preprocesses_a_minimal_sketch() {
     std::fs::write(&sketch,
         "void setup() {}\nvoid loop() {}\n").unwrap();
 
-    let out = preprocess(&sketch, "esp32:esp32:esp32s3").expect("preprocess");
+    let out = preprocess(&sketch, "esp32:esp32:esp32s3", &[]).expect("preprocess");
     let text = std::fs::read_to_string(&out).unwrap();
     assert!(text.contains("void setup"));
     assert!(text.contains("void loop"));
