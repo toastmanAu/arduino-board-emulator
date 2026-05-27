@@ -9,11 +9,6 @@ TEST(SSD1306Panel, FillAndDrawLine) {
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     sim_runtime_init(0, nullptr);
 
-    // Panel_sdl::setup() creates the semaphores used by the lock_t RAII
-    // guard inside every draw call. Without this the lock destructor calls
-    // SDL_SemPost(nullptr) and crashes. (See Task 11 finding.)
-    LGFX_SSD1306_SDL::sdl_setup();
-
     LGFX_SSD1306_SDL oled;
     oled.init();
     oled.fillScreen(TFT_BLACK);
@@ -37,6 +32,5 @@ TEST(SSD1306Panel, FillAndDrawLine) {
     EXPECT_GE(set, 77);
     EXPECT_LE(set, 180);
 
-    LGFX_SSD1306_SDL::sdl_close();
     sim_runtime_shutdown();
 }

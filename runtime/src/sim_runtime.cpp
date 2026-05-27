@@ -1,6 +1,7 @@
 #include "sim_runtime.h"
 #include <Arduino.h>
 #include <SDL.h>
+#include <LovyanGFX.hpp>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -42,9 +43,11 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         std::fprintf(stderr, "[boardghost] SDL_Init failed: %s\n", SDL_GetError());
     }
+    lgfx::Panel_sdl::setup();
 }
 
 void sim_runtime_shutdown(void) {
+    lgfx::Panel_sdl::close();
     SDL_Quit();
 }
 

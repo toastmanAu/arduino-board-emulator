@@ -23,11 +23,6 @@ TEST(ILI9488Panel, DrawsRedRectangleReproducibly) {
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     sim_runtime_init(0, nullptr);
 
-    // Panel_sdl::setup() creates the semaphores used by the lock_t RAII
-    // guard inside every draw call. Without this the lock destructor calls
-    // SDL_SemPost(nullptr) and crashes.
-    lgfx::Panel_sdl::setup();
-
     LGFX_ILI9488_SDL tft;
     tft.init();
     tft.setRotation(0);
@@ -46,6 +41,5 @@ TEST(ILI9488Panel, DrawsRedRectangleReproducibly) {
     std::printf("ILI9488 red rect hash = 0x%016lx\n", h);
     EXPECT_EQ(h, 0xa6ba9d5a4e64aac3ULL);
 
-    lgfx::Panel_sdl::close();
     sim_runtime_shutdown();
 }
