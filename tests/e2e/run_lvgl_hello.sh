@@ -7,6 +7,7 @@ cd "$(dirname "$0")/../.."
 export SDL_VIDEODRIVER=dummy
 export BOARDGHOST_BOARDS="$PWD/runtime/boards"
 export BOARDGHOST_RUNTIME="$PWD/runtime"
+export BOARDGHOST_FRAME_LIMIT=200
 
 OUT=$(cargo run -q -p boardghost-cli -- \
         run examples/lvgl_hello_ili9488 \

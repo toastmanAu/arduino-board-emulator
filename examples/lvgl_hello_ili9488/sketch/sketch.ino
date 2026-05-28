@@ -41,7 +41,15 @@ void loop() {
     delay(5);
     frames++;
     if (frames % 50 == 0) Serial.printf("frame %d\n", frames);
-    if (frames >= 200) {
+    // Honor BOARDGHOST_FRAME_LIMIT for headless E2E (defaults to 200).
+    // The launcher leaves it unset, so the demo runs until you close the
+    // window (SDL_QUIT) or click "Stop" in the launcher.
+    static int limit = -1;
+    if (limit < 0) {
+        const char* env = std::getenv("BOARDGHOST_FRAME_LIMIT");
+        limit = env ? atoi(env) : 0;   // 0 = run forever
+    }
+    if (limit > 0 && frames >= limit) {
         Serial.println("done");
         Serial.flush();
         _exit(0);
