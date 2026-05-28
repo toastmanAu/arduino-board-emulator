@@ -1,5 +1,6 @@
 pub mod arduino_libs;
 pub mod include_scan;
+pub mod library_overrides;
 pub mod board;
 pub mod build;
 pub mod cli;
