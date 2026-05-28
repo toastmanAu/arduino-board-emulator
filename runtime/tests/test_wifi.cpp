@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "WiFi.h"
+#include "WiFiClientSecure.h"
 #include <cstdlib>
 
 TEST(WiFi, FakeModeConnectsImmediately) {
@@ -24,4 +25,12 @@ TEST(WiFi, ClientConnectInFakeMode) {
     EXPECT_TRUE(client.connected());
     client.stop();
     EXPECT_FALSE(client.connected());
+}
+
+TEST(WiFiClientSecure, CompilesAndDelegates) {
+    setenv("BOARDGHOST_NET", "fake", 1);
+    WiFiClientSecure client;
+    client.setCACert("dummy");
+    client.setInsecure();
+    EXPECT_EQ(client.connect("example.com", 443), 1);
 }
