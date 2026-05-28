@@ -17,6 +17,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::list_recent_projects,
             commands::add_project,
+            commands::list_boards,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

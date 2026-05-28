@@ -42,4 +42,39 @@ pub fn add_project(
     Ok(())
 }
 
-// list_boards, build_and_run, stop arrive in later tasks (5, 7, 8).
+#[derive(serde::Serialize, Debug)]
+pub struct BoardSummary {
+    pub name:        String,
+    pub description: String,
+}
+
+pub fn parse_list_boards_output(stdout: &str) -> Vec<BoardSummary> {
+    stdout
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .filter_map(|l| {
+            let mut iter = l.splitn(2, char::is_whitespace);
+            let name = iter.next()?.to_string();
+            let desc = iter.next()?.trim().to_string();
+            Some(BoardSummary { name, description: desc })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn list_boards() -> Result<Vec<BoardSummary>, String> {
+    let out = tokio::process::Command::new("boardghost")
+        .arg("list-boards")
+        .output()
+        .await
+        .map_err(|e| format!("could not invoke boardghost: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "boardghost list-boards exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(parse_list_boards_output(&String::from_utf8_lossy(&out.stdout)))
+}
