@@ -1,0 +1,14 @@
+name              = "st7796_esp32s3_sim"
+description       = "ESP32-S3 with ST7796 480x320 SPI display + GT911 capacitive multi-touch"
+arduino_fqbn_hint = "esp32:esp32:esp32s3"
+
+[display]
+controller  = "ST7796"
+width       = 480
+height      = 320
+rotation    = 1
+bus         = "spi"
+color_depth = 16
+
+[touch]
+controller  = "gt911"

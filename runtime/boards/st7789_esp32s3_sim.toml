@@ -1,0 +1,14 @@
+name              = "st7789_esp32s3_sim"
+description       = "ESP32-S3 with ST7789 240x320 SPI display + FT6236 capacitive touch"
+arduino_fqbn_hint = "esp32:esp32:esp32s3"
+
+[display]
+controller  = "ST7789"
+width       = 240
+height      = 320
+rotation    = 0
+bus         = "spi"
+color_depth = 16
+
+[touch]
+controller  = "ft6236"

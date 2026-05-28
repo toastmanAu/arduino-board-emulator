@@ -1,0 +1,11 @@
+name              = "st7735_esp32_sim"
+description       = "ESP32 with ST7735 160x128 SPI display"
+arduino_fqbn_hint = "esp32:esp32:esp32s3"
+
+[display]
+controller  = "ST7735"
+width       = 160
+height      = 128
+rotation    = 0
+bus         = "spi"
+color_depth = 16
