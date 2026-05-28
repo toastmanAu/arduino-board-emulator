@@ -1879,14 +1879,18 @@ Run on 2026-05-29 against `/home/phill/Arduino/arduinoProjects/cryptoTickerv3`.
 
 Board used: `st7789_esp32s3_sim` (ESP32-S3 with ST7789 240x320 SPI display + FT6236 capacitive touch).
 
-### Pipeline reach
+### Pipeline reach (after gaps 1+2 fixed in commit a5f4d06)
 
 - ✅ Sketch discovered (`cryptoTickerv3.ino`)
 - ✅ 15 headers scanned
-- ❌ Library resolve failed at Stage 2b — did not reach preprocess
-- ❌ CMake codegen not reached
-- ❌ Compile not reached
-- ❌ Run/screenshot not reached
+- ✅ Local-dir headers filtered out (`lvgfx_setup.h` no longer triggers resolution)
+- ✅ Library resolve passes (ArduinoJson, ESP32Time, Time all auto-discovered)
+- ✅ Preprocess passes
+- ✅ CMake codegen passes
+- ❌ Compile fails at Stage 5 — new gap surfaced in M2.B's WString shim (gap 5 below)
+- ❌ Run not reached
+
+### Original Stage-2b failure (pre-fix)
 
 ### Build log (full output)
 
@@ -1924,15 +1928,24 @@ Of the 15 headers, here is what the resolver sees (in alphabetical order, as BTr
 | `stdlib.h` | ❌ **would FAIL** — not in CORE_PREFIXES | C stdlib header |
 | `time.h` | ❌ **would FAIL** — not in CORE_PREFIXES | C stdlib header |
 
-### Gaps for M2.D backlog
+### Gaps — first-contact findings
 
-1. **Local sketch-dir headers not excluded from library resolution** — `lvgfx_setup.h` is a file that lives _alongside_ `cryptoTickerv3.ino` in the sketch directory. `include_scan` collects it identically to real library headers (both angle-bracket and quote forms go into the same `BTreeSet`). The resolver has no way to distinguish and fails with `LibraryNotInstalled`. Fix direction: in `lib_resolve::resolve`, before calling `installed.iter().find(...)`, check whether a file with that name exists in the sketch's own directory (or any directory already on the extra-includes path); if it does, skip it as a local header. Alternatively, `include_scan::scan_file` could accept a `local_dir: &Path` and return two sets (local vs library), letting the caller skip the local set during resolution.
+1. **✅ FIXED in M2.C (commit a5f4d06).** Local sketch-dir headers (`lvgfx_setup.h`) were being treated as library headers. Fix: `build.rs` now filters out any header that exists as a file in the sketch's parent dir before passing to `lib_resolve::resolve`.
 
-2. **C standard library headers not in CORE_PREFIXES** — `time.h` and `stdlib.h` (both present in the sketch) are not in the `CORE_PREFIXES` list inside `lib_resolve::is_stdlib_or_arduino_core`. The resolver would attempt to match them against installed Arduino libraries and fail. Fix direction: extend `CORE_PREFIXES` with the full set of C/C++ stdlib headers commonly used in Arduino sketches: `time.h`, `stdlib.h`, `stdarg.h`, `assert.h`, `limits.h`, `float.h`, `ctype.h`, `errno.h`, `locale.h`, `signal.h`, `setjmp.h`, `stdnoreturn.h`. Alternatively, add a rule: any header with no path separators whose stem matches a known libc list is treated as core.
+2. **✅ FIXED in M2.C (commit a5f4d06).** `CORE_PREFIXES` extended to ~20 entries covering C/C++ stdlib headers commonly used in Arduino sketches (`time.h`, `stdlib.h`, `stdarg.h`, `ctype.h`, `errno.h`, `assert.h`, `limits.h`, `float.h`, `inttypes.h`, `unistd.h`, `sys/time.h`, etc.).
 
-3. **LovyanGFX panel mismatch (board vs sketch)** — `lvgfx_setup.h` declares a custom `LGFX` class using `lgfx::Panel_ILI9488` and `lgfx::Touch_XPT2046` (a 320×480 resistive-touch display). The BoardGhost board profile `st7789_esp32s3_sim` targets ST7789 240×320. Even if gap 1 is fixed and the sketch compiles, the runtime will present a 240×320 framebuffer while the sketch configures a 320×480 ILI9488 — visual output will be wrong. Fix direction: this is inherently a per-sketch configuration mismatch, not a boardghost bug. Document in README that the board profile must match the sketch's hardware. Longer-term: a `--width / --height` override flag on `boardghost build` would let users force the right resolution. Out of scope for M2.D core work.
+3. **DEFERRED to M2.D — LovyanGFX panel mismatch (board vs sketch).** `lvgfx_setup.h` declares a custom `LGFX` class using `lgfx::Panel_ILI9488` and `lgfx::Touch_XPT2046` (320×480 resistive-touch). The board profile `st7789_esp32s3_sim` targets ST7789 240×320. Inherently a per-sketch configuration mismatch — not a boardghost bug. Fix direction: a `--width/--height` override flag on `boardghost build` would let users force the right resolution. Out of M2.D core scope unless user requests.
 
-4. **No way for the user to suppress resolution for a specific header** — There is currently no escape hatch (e.g., a `known_local_headers` list in a project-level `boardghost.toml`) for users who have local headers that clash with library names. Fix direction: add optional `boardghost.toml` support in M2.D with a `local_headers = ["lvgfx_setup.h"]` key that tells the resolver to skip those entries without filesystem probing.
+4. **DEFERRED to M2.D — No `boardghost.toml` escape hatch.** No way for the user to declaratively suppress resolution for a specific header. Fix direction: add optional `boardghost.toml` with a `local_headers = ["foo.h"]` key. Low priority since gap 1's filesystem-probe already handles the common case.
+
+5. **NEW GAP — ArduinoJson 7.x deserialiseJson(doc, String) requires `String::read()`.** After gaps 1+2 were fixed, the compile reached Stage 5 and failed inside ArduinoJson's deserializer:
+
+   ```
+   ArduinoJson/Deserialization/Reader.hpp:22:21: error:
+       'class String' has no member named 'read'
+   ```
+
+   ArduinoJson 7.x uses a Stream-like `Reader<String>` that calls `source_->read()` to consume one character at a time. Our `runtime/shims/WString.h` `String` class has `write()` (added in Task 9 for serialise support) but not `read()`. Fix direction: add a stateful `int read()` method to `String` that maintains an internal read cursor and returns -1 at EOF, matching Arduino's `Stream` interface. Probably also needs `available()` and `peek()` for full Stream compatibility. This is an M2.B-style shim addition, not an M2.C structural issue. **Defer to M2.D shim-hardening.**
 
 ### What worked
 
@@ -1943,7 +1956,7 @@ Of the 15 headers, here is what the resolver sees (in alphabetical order, as BTr
 
 ### Summary
 
-The M2.C library auto-discovery machinery is **correct for the happy path** (headers that are either shimmed, core, or installed Arduino libraries). The two structural gaps exposed by this real-world sketch are: (1) local sketch-colocated headers are not distinguished from library headers, and (2) the C stdlib allowlist is incomplete. Both are straightforward to fix in M2.D. The board/panel mismatch is a known-won't-fix for M2.D scope.
+The M2.C library auto-discovery pipeline now works correctly for cryptoTickerv3 through Stage 4 (codegen): the resolver picks up ArduinoJson 7.4.3, ESP32Time 2.0.6, and Time 1.6.1 from `arduino-cli lib list`, distinguishes local sketch-dir headers from library headers, and generates a valid CMakeLists.txt. The remaining failure is at compile-time in ArduinoJson's `deserializeJson(doc, String)` path — a missing `String::read()` method in the M2.B WString shim. That's an incremental shim fix for M2.D, not an architectural gap in M2.C.
 
 ---
 
