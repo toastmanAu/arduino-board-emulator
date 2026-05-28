@@ -19,6 +19,7 @@ fn main() {
             commands::add_project,
             commands::list_boards,
             commands::build_and_run,
+            commands::stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

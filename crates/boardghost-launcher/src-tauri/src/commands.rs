@@ -119,3 +119,31 @@ pub async fn build_and_run(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn stop(state: State<'_, AppState>) -> Result<(), String> {
+    let child_opt = {
+        let mut slot = state.running.lock().unwrap();
+        slot.take()
+    };
+
+    let Some(mut child) = child_opt else { return Ok(()); };
+
+    // Try graceful kill first. tokio's Child::start_kill maps to SIGKILL on
+    // Unix; for SIGTERM we drop to the raw libc / unix-specific path.
+    #[cfg(unix)]
+    {
+        if let Some(pid) = child.id() {
+            unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+        }
+    }
+
+    // Wait up to 2 seconds.
+    let wait = tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await;
+    if wait.is_err() {
+        // Still alive — escalate.
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+    }
+    Ok(())
+}
