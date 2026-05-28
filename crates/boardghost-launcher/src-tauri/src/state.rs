@@ -12,6 +12,8 @@ pub struct AppState {
     pub store:         Mutex<ProjectStore>,
     /// Currently running sketch child (if any). Killed on `stop`.
     pub running:       Mutex<Option<Child>>,
+    /// PID of the currently running sketch process (if any).
+    pub running_pid:   Mutex<Option<u32>>,
 }
 
 impl AppState {
@@ -19,8 +21,9 @@ impl AppState {
         let store = ProjectStore::load(&projects_path).unwrap_or_default();
         Ok(Self {
             projects_path,
-            store:   Mutex::new(store),
-            running: Mutex::new(None),
+            store:       Mutex::new(store),
+            running:     Mutex::new(None),
+            running_pid: Mutex::new(None),
         })
     }
 }

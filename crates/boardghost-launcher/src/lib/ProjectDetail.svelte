@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { buildAndRun, stop, type BoardSummary } from "./api";
+  import { buildAndRun, stop, screenshot, type BoardSummary } from "./api";
   import BoardSelect from "./BoardSelect.svelte";
   import LogPanel    from "./LogPanel.svelte";
   import GpioGrid    from "./GpioGrid.svelte";
@@ -16,6 +16,7 @@
   let selectedBoard = $state("");
   let running       = $state(false);
   let lastError: string | null = $state(null);
+  let lastScreenshot: string | null = $state(null);
 
   $effect(() => {
     if (!selectedBoard && boards.length > 0) selectedBoard = boards[0].name;
@@ -36,6 +37,15 @@
   async function onStop() {
     try { await stop(); } finally { running = false; }
   }
+
+  async function onScreenshot() {
+    lastError = null;
+    try {
+      lastScreenshot = await screenshot();
+    } catch (e) {
+      lastError = `Screenshot failed: ${e}`;
+    }
+  }
 </script>
 
 <section class="detail">
@@ -53,11 +63,18 @@
         <button type="button" onclick={onStop} disabled={!running}>
           ■ Stop
         </button>
+        <button type="button" onclick={onScreenshot} disabled={!running}>
+          📷 Screenshot
+        </button>
       </div>
     </div>
 
     {#if lastError}
       <div class="error">Error: {lastError}</div>
+    {/if}
+
+    {#if lastScreenshot}
+      <div class="info">Screenshot saved: {lastScreenshot}</div>
     {/if}
 
     <div class="panes">
@@ -79,6 +96,7 @@
   .buttons { display: flex; gap: 0.5rem; }
   .buttons button { padding: 0.5rem 1rem; font-weight: 600; }
   .error { padding: 0.5rem; background: #fee; border: 1px solid #fcc; border-radius: 4px; font-size: 0.85rem; }
+  .info { padding: 0.5rem; background: #efe; border: 1px solid #cfc; border-radius: 4px; font-size: 0.85rem; }
   .panes { display: grid; grid-template-rows: 1fr 1fr auto; gap: 0.5rem; flex: 1; min-height: 0; }
   .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #888; }
 </style>

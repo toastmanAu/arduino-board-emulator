@@ -16,12 +16,15 @@ pub async fn spawn(
     project: PathBuf,
     board: String,
 ) -> anyhow::Result<Child> {
+    let fixed = std::env::temp_dir().join("boardghost-screenshot.png");
+
     let mut child = Command::new("boardghost")
         .arg("run")
         .arg(&project)
         .arg("--board")
         .arg(&board)
         .env("SDL_VIDEODRIVER", "x11")
+        .env("BOARDGHOST_SCREENSHOT_PATH", &fixed)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

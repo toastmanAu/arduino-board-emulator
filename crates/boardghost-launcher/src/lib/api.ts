@@ -51,3 +51,7 @@ export function onSerialLog(handler: (line: string) => void): Promise<UnlistenFn
 export function onGpioLog(handler: (line: string) => void): Promise<UnlistenFn> {
   return listen<string>("gpio-log", (e) => handler(e.payload));
 }
+
+export async function screenshot(): Promise<string> {
+  return invoke<string>("screenshot");
+}
