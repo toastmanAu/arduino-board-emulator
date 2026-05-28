@@ -2,7 +2,7 @@
 
 Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on your desktop. No flashing, no real hardware.
 
-**Status:** M1.A (CLI + sim engine). Tauri launcher is M1.B.
+**Status:** M1 shipping. Engine + CLI tagged at `m1a-engine`. Launcher (M1.B) building.
 
 ## What works (M1.A)
 
@@ -12,6 +12,7 @@ Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on y
 - Mouse → touch input
 - `Serial.print`/`println`/`printf` capture
 - Headless mode (`SDL_VIDEODRIVER=dummy`) for CI
+- Tauri desktop launcher (`npm run tauri dev` in `crates/boardghost-launcher`)
 
 ## What doesn't work yet
 

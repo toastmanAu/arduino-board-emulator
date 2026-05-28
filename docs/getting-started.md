@@ -100,3 +100,50 @@ Serial goes to stdout; runtime diagnostics go to stderr.
 ```bash
 boardghost run my-project --board ili9488_esp32s3_sim 1>serial.log 2>runtime.log
 ```
+
+## 8. Using the desktop launcher
+
+### Dev mode
+
+Launch the Tauri desktop app in development mode:
+
+```bash
+cd crates/boardghost-launcher
+npm install
+npm run tauri dev
+```
+
+The launcher auto-locates the runtime tree via `CARGO_MANIFEST_DIR` in dev builds — no environment variables needed.
+
+### Production build
+
+Build the production launcher:
+
+```bash
+cd crates/boardghost-launcher
+npm run tauri build
+```
+
+Outputs land at:
+- Bare binary: `target/release/boardghost-launcher`
+- Linux installers: `target/release/bundle/{deb,rpm}/`
+
+### Prerequisite
+
+`boardghost` must be on PATH. The launcher shells out to it; if missing, board listing fails.
+
+Easiest way to set it up:
+
+```bash
+cargo build --release -p boardghost-cli
+install -m 0755 target/release/boardghost ~/.local/bin/boardghost
+```
+
+Verify:
+
+```bash
+which boardghost
+boardghost doctor
+```
+
+**Note:** In dev mode the launcher auto-locates the runtime tree, but production binaries currently require `BOARDGHOST_BOARDS` and `BOARDGHOST_RUNTIME` environment variables to find the board definitions and simulator resources. (Resource bundling is planned for M2.)
