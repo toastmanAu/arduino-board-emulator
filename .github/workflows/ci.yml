@@ -28,6 +28,7 @@ jobs:
           arduino-cli core install esp32:esp32
           arduino-cli lib install LovyanGFX
           arduino-cli lib install lvgl
+          arduino-cli lib install ArduinoJson
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -49,6 +50,10 @@ jobs:
         run: ./tests/e2e/run_ssd1306_text.sh
       - name: E2E — lvgl_hello_ili9488
         run: ./tests/e2e/run_lvgl_hello.sh
+      - name: E2E — cryptoticker_smoke (M2.C)
+        run: ./tests/e2e/cryptoticker_smoke.sh
+        env:
+          BOARDGHOST_NET: fake
 
   launcher-build:
     runs-on: ubuntu-latest

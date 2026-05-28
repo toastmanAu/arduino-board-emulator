@@ -63,3 +63,40 @@ cargo build --release -p boardghost-cli
 A 480×320 window appears with an LVGL button. Click it.
 
 See [`docs/getting-started.md`](docs/getting-started.md) for the 5-minute tour.
+
+## Using custom Arduino libraries (M2.C)
+
+BoardGhost can build sketches against any Arduino library installed via
+`arduino-cli`. Header-only libraries (ArduinoJson, TimeLib, ...) work
+transparently; libraries with platform-specific transports can be shimmed.
+
+```bash
+# Install whatever your sketch needs
+arduino-cli lib install ArduinoJson Time
+
+# Then build normally
+boardghost run --board generic-esp32-st7789 path/to/your/sketch
+```
+
+The CLI auto-discovers installed libraries via `arduino-cli lib list`,
+maps `#include <...>` directives to libraries via their `provides_includes`
+metadata, and injects each library's source dir into the generated
+CMakeLists.txt.
+
+### Library overrides
+
+For libraries with hardware-specific code that won't compile against SDL
+(e.g. ESP32-only TCP transports), drop a `<libname>.toml` file in
+`runtime/library_overrides/`:
+
+```toml
+exclude_dirs = ["network/esp32", "network/esp8266"]
+exclude_files = ["server.cpp"]
+add_include_dirs = ["${BOARDGHOST_RUNTIME_DIR}/shims/sim_ws"]
+shim_only = false   # set true if you ship a full header-only replacement
+```
+
+Existing overrides:
+- `ArduinoWebsockets` — uses BoardGhost's header-only shim
+  (`runtime/shims/ArduinoWebsockets.h`); real WebSocket support is future
+  work but the shim compiles cleanly.
