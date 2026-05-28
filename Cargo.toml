@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/boardghost-cli"]
+members = [
+    "crates/boardghost-cli",
+    "crates/boardghost-launcher/src-tauri",
+]
 
 [workspace.package]
 version = "0.1.0"
