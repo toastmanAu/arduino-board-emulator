@@ -16,6 +16,7 @@ add_executable(runtime_tests
     test_serial.cpp
     test_bus_logging.cpp
     test_event_pump.cpp
+    test_gpio_log.cpp
     test_displays_ili9488.cpp
     test_displays_ssd1306.cpp
     test_displays_extra.cpp

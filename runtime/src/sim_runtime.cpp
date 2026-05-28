@@ -69,6 +69,27 @@ void sim_log(const char* msg) {
     std::fprintf(stderr, "[boardghost] %s\n", msg);
 }
 
+static const char* mode_name(uint8_t mode) {
+    switch (mode) {
+        case INPUT:        return "INPUT";
+        case OUTPUT:       return "OUTPUT";
+        case INPUT_PULLUP: return "INPUT_PULLUP";
+        default:           return "OTHER";
+    }
+}
+
+void sim_log_gpio_mode(uint8_t pin, uint8_t mode) {
+    std::fprintf(stderr, "[gpio] mode %u %s\n", (unsigned)pin, mode_name(mode));
+}
+
+void sim_log_gpio_write(uint8_t pin, uint8_t value) {
+    std::fprintf(stderr, "[gpio] write %u %u\n", (unsigned)pin, (unsigned)(value ? 1 : 0));
+}
+
+void sim_log_gpio_pwm(uint8_t pin, int value) {
+    std::fprintf(stderr, "[gpio] pwm %u %d\n", (unsigned)pin, value);
+}
+
 uint32_t millis(void) {
     auto d = clock_type::now() - g_start;
     return static_cast<uint32_t>(
@@ -92,11 +113,13 @@ void delayMicroseconds(uint32_t us) {
 void pinMode(uint8_t pin, uint8_t mode) {
     if (pin >= MAX_PINS) return;
     g_pins[pin].mode = mode;
+    sim_log_gpio_mode(pin, mode);
 }
 
 void digitalWrite(uint8_t pin, uint8_t value) {
     if (pin >= MAX_PINS) return;
     g_pins[pin].digital = value ? 1 : 0;
+    sim_log_gpio_write(pin, value);
 }
 
 int digitalRead(uint8_t pin) {
@@ -112,6 +135,7 @@ int analogRead(uint8_t pin) {
 void analogWrite(uint8_t pin, int value) {
     if (pin >= MAX_PINS) return;
     g_pins[pin].analog = value;
+    sim_log_gpio_pwm(pin, value);
 }
 
 } // extern "C"
