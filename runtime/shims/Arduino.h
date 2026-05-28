@@ -2,6 +2,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
+// Pull in the sim-runtime public API so user sketches don't have to
+// include "sim_runtime.h" explicitly to call sim_set_active_display,
+// sim_screenshot, sim_log_*, etc.
+#include "sim_runtime.h"
+
 #ifdef __cplusplus
 #include "WString.h"
 #endif
