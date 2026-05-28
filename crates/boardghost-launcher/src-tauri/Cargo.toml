@@ -9,6 +9,10 @@ description = "Desktop launcher for the BoardGhost simulator"
 name = "boardghost-launcher"
 path = "src/main.rs"
 
+[lib]
+name = "boardghost_launcher"
+path = "src/lib.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -21,6 +25,9 @@ anyhow = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 dirs = "5"
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [features]
 default = ["custom-protocol"]
