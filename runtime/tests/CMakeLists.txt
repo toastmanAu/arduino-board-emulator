@@ -25,6 +25,7 @@ add_executable(runtime_tests
     test_touch_sdl.cpp
     test_net_mode.cpp
     test_wifi.cpp
+    test_http.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 

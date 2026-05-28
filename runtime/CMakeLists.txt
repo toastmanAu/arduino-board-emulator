@@ -18,6 +18,7 @@ add_library(sim_runtime STATIC
     src/sim_screenshot.cpp
     src/sim_net.cpp
     src/sim_wifi.cpp
+    src/sim_http.cpp
 )
 
 target_include_directories(sim_runtime
