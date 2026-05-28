@@ -19,3 +19,4 @@ build/
 # Node (will be used by launcher in Plan 2)
 node_modules/
 dist/
+*.boardghost.cpp
