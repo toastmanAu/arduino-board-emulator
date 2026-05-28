@@ -78,3 +78,44 @@ pub async fn list_boards() -> Result<Vec<BoardSummary>, String> {
     }
     Ok(parse_list_boards_output(&String::from_utf8_lossy(&out.stdout)))
 }
+
+use crate::runner;
+use tauri::AppHandle;
+
+#[tauri::command]
+pub async fn build_and_run(
+    app:     AppHandle,
+    state:   State<'_, AppState>,
+    project: PathBuf,
+    board:   String,
+) -> Result<(), String> {
+    // Kill any previous sketch first.
+    {
+        let mut slot = state.running.lock().unwrap();
+        if let Some(mut child) = slot.take() {
+            let _ = child.start_kill();
+        }
+    }
+
+    let child = runner::spawn(app.clone(), project.clone(), board.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    {
+        let mut slot = state.running.lock().unwrap();
+        *slot = Some(child);
+    }
+
+    // Record the project as recently used.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    {
+        let mut store = state.store.lock().unwrap();
+        store.add_or_update(crate::projects::ProjectEntry { path: project, board, last_used: now });
+        store.save(&state.projects_path).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
