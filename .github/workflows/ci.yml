@@ -31,8 +31,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cargo test
-        run: cargo test --workspace
+      - name: Cargo test (CLI only)
+        # The launcher crate pulls in Tauri + GTK system deps that this
+        # job intentionally doesn't install. Launcher tests run in the
+        # dedicated `launcher-build` job below.
+        run: cargo test -p boardghost-cli
 
       - name: Build runtime + GoogleTest
         run: |
