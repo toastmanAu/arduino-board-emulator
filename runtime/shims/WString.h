@@ -20,6 +20,11 @@ public:
     const char* c_str() const   { return s_.c_str(); }
     size_t      length() const  { return s_.size(); }
 
+    // Implicit conversion to const char* — matches Arduino's String behaviour
+    // and lets calls like `lcd.print(myString)` resolve to LovyanGFX's
+    // print(const char*) overload (which doesn't have a String overload).
+    operator const char*() const { return s_.c_str(); }
+
     String& operator+=(const String& o) { s_ += o.s_; return *this; }
     String  operator+ (const String& o) const { String r(*this); r += o; return r; }
 
