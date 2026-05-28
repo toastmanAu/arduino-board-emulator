@@ -44,7 +44,11 @@ pub async fn spawn(
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let _ = app.emit("build-log", line);
+                if let Some(rest) = line.strip_prefix("[gpio] ") {
+                    let _ = app.emit("gpio-log", rest.to_string());
+                } else {
+                    let _ = app.emit("build-log", line);
+                }
             }
         });
     }
