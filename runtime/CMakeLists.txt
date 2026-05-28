@@ -22,6 +22,7 @@ target_include_directories(sim_runtime
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/shims
         ${CMAKE_CURRENT_SOURCE_DIR}/displays
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
 )
 
 target_compile_definitions(sim_runtime PUBLIC BOARDGHOST_SIM=1)
