@@ -1873,6 +1873,80 @@ git commit -m "docs(m2c): cryptoTickerv3 first-contact findings"
 
 ---
 
+## cryptoTickerv3 First-Contact Results
+
+Run on 2026-05-29 against `/home/phill/Arduino/arduinoProjects/cryptoTickerv3`.
+
+Board used: `st7789_esp32s3_sim` (ESP32-S3 with ST7789 240x320 SPI display + FT6236 capacitive touch).
+
+### Pipeline reach
+
+- ✅ Sketch discovered (`cryptoTickerv3.ino`)
+- ✅ 15 headers scanned
+- ❌ Library resolve failed at Stage 2b — did not reach preprocess
+- ❌ CMake codegen not reached
+- ❌ Compile not reached
+- ❌ Run/screenshot not reached
+
+### Build log (full output)
+
+```
+→ Sketch: "/home/phill/Arduino/arduinoProjects/cryptoTickerv3/cryptoTickerv3.ino"
+→ Board:  st7789_esp32s3_sim (ESP32-S3 with ST7789 240x320 SPI display + FT6236 capacitive touch)
+→ Headers: 15 includes scanned
+Error: Stage 2b: library resolve
+
+Caused by:
+    Header <lvgfx_setup.h> is not provided by any installed Arduino library.
+      Try: arduino-cli lib search <name> && arduino-cli lib install <name>
+      Or shim it under runtime/shims/.
+```
+
+### Header-by-header analysis
+
+Of the 15 headers, here is what the resolver sees (in alphabetical order, as BTreeSet):
+
+| Header | Fate | Notes |
+|---|---|---|
+| `ArduinoJson.h` | ✅ resolved → ArduinoJson 7.4.3 | installed |
+| `ArduinoWebsockets.h` | ✅ shimmed (ALLOWLIST) | skipped by resolver |
+| `EEPROM.h` | ✅ shimmed | skipped |
+| `ESP32Time.h` | ✅ resolved → ESP32Time 2.0.6 | installed |
+| `FS.h` | ✅ shimmed | skipped |
+| `HTTPClient.h` | ✅ shimmed | skipped |
+| `SPIFFS.h` | ✅ shimmed | skipped |
+| `SPI.h` | ✅ core (CORE_PREFIXES) | skipped |
+| `TimeLib.h` | ✅ resolved → Time 1.6.1 | installed |
+| `WiFi.h` | ✅ shimmed | skipped |
+| `WiFiClientSecure.h` | ✅ shimmed | skipped |
+| `Wire.h` | ✅ core (CORE_PREFIXES) | skipped |
+| `lvgfx_setup.h` | ❌ **FAIL** — resolver treats it as a library header | local sketch file |
+| `stdlib.h` | ❌ **would FAIL** — not in CORE_PREFIXES | C stdlib header |
+| `time.h` | ❌ **would FAIL** — not in CORE_PREFIXES | C stdlib header |
+
+### Gaps for M2.D backlog
+
+1. **Local sketch-dir headers not excluded from library resolution** — `lvgfx_setup.h` is a file that lives _alongside_ `cryptoTickerv3.ino` in the sketch directory. `include_scan` collects it identically to real library headers (both angle-bracket and quote forms go into the same `BTreeSet`). The resolver has no way to distinguish and fails with `LibraryNotInstalled`. Fix direction: in `lib_resolve::resolve`, before calling `installed.iter().find(...)`, check whether a file with that name exists in the sketch's own directory (or any directory already on the extra-includes path); if it does, skip it as a local header. Alternatively, `include_scan::scan_file` could accept a `local_dir: &Path` and return two sets (local vs library), letting the caller skip the local set during resolution.
+
+2. **C standard library headers not in CORE_PREFIXES** — `time.h` and `stdlib.h` (both present in the sketch) are not in the `CORE_PREFIXES` list inside `lib_resolve::is_stdlib_or_arduino_core`. The resolver would attempt to match them against installed Arduino libraries and fail. Fix direction: extend `CORE_PREFIXES` with the full set of C/C++ stdlib headers commonly used in Arduino sketches: `time.h`, `stdlib.h`, `stdarg.h`, `assert.h`, `limits.h`, `float.h`, `ctype.h`, `errno.h`, `locale.h`, `signal.h`, `setjmp.h`, `stdnoreturn.h`. Alternatively, add a rule: any header with no path separators whose stem matches a known libc list is treated as core.
+
+3. **LovyanGFX panel mismatch (board vs sketch)** — `lvgfx_setup.h` declares a custom `LGFX` class using `lgfx::Panel_ILI9488` and `lgfx::Touch_XPT2046` (a 320×480 resistive-touch display). The BoardGhost board profile `st7789_esp32s3_sim` targets ST7789 240×320. Even if gap 1 is fixed and the sketch compiles, the runtime will present a 240×320 framebuffer while the sketch configures a 320×480 ILI9488 — visual output will be wrong. Fix direction: this is inherently a per-sketch configuration mismatch, not a boardghost bug. Document in README that the board profile must match the sketch's hardware. Longer-term: a `--width / --height` override flag on `boardghost build` would let users force the right resolution. Out of scope for M2.D core work.
+
+4. **No way for the user to suppress resolution for a specific header** — There is currently no escape hatch (e.g., a `known_local_headers` list in a project-level `boardghost.toml`) for users who have local headers that clash with library names. Fix direction: add optional `boardghost.toml` support in M2.D with a `local_headers = ["lvgfx_setup.h"]` key that tells the resolver to skip those entries without filesystem probing.
+
+### What worked
+
+- Arduino library install state (ArduinoJson 7.4.3, ESP32Time 2.0.6, ArduinoWebsockets 0.5.4, Time 1.6.1, LovyanGFX 1.2.19) correctly detected via `arduino-cli lib list`.
+- All 12 of the 15 headers that _are_ handled were correctly classified: 6 shimmed via ALLOWLIST, 3 core/stdlib, 3 resolved to installed libraries.
+- The error message is actionable: it names the failing header and suggests both `arduino-cli lib install` and `runtime/shims/` as fix paths.
+- The pipeline correctly bailed out at Stage 2b rather than producing a broken CMakeLists.txt.
+
+### Summary
+
+The M2.C library auto-discovery machinery is **correct for the happy path** (headers that are either shimmed, core, or installed Arduino libraries). The two structural gaps exposed by this real-world sketch are: (1) local sketch-colocated headers are not distinguished from library headers, and (2) the C stdlib allowlist is incomplete. Both are straightforward to fix in M2.D. The board/panel mismatch is a known-won't-fix for M2.D scope.
+
+---
+
 ## Done criteria
 
 - [ ] All 11 tasks merged on `main`.
