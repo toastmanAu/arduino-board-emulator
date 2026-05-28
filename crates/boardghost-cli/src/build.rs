@@ -33,12 +33,20 @@ pub fn run_build(
         .with_context(|| format!("scan {:?}", discovered.entry))?;
     eprintln!("→ Headers: {} includes scanned", headers.len());
 
+    // Stage 2a.1: drop headers that exist as local files in the sketch dir.
+    // The arduino-cli preprocessor finds them automatically — they're not
+    // libraries and shouldn't fail discovery.
+    let sketch_dir = discovered.entry.parent().unwrap_or(Path::new("."));
+    let library_headers: std::collections::BTreeSet<String> = headers.into_iter()
+        .filter(|h| !sketch_dir.join(h).exists())
+        .collect();
+
     // Stage 2b: Resolve headers → installed libraries (skipping shimmed ones).
     let installed = arduino_libs::list_installed()
         .context("arduino-cli lib list failed; install arduino-cli or check it's in PATH")?;
     let overrides_dir = runtime_dir.join("library_overrides");
     let resolved = lib_resolve::resolve(
-        &headers,
+        &library_headers,
         &installed,
         &overrides_dir,
         libraries::ALLOWLIST,

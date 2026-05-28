@@ -74,13 +74,19 @@ fn header_is_shimmed(header: &str, shimmed: &[&str]) -> bool {
 }
 
 fn is_stdlib_or_arduino_core(header: &str) -> bool {
-    // Anything starting with these prefixes is provided by arduino-cli's core
-    // or the C++ stdlib — no library to resolve.
-    const CORE_PREFIXES: &[&str] = &[
-        "Arduino.h", "Wire.h", "SPI.h", "Serial.h",
-        "stdint.h", "stddef.h", "stdio.h", "string.h", "math.h",
+    // Anything matching these names is provided by arduino-cli's core or the
+    // C/C++ stdlib — no library to resolve.
+    const CORE_HEADERS: &[&str] = &[
+        // Arduino core
+        "Arduino.h", "Wire.h", "SPI.h", "Serial.h", "EEPROM.h",
+        // C stdlib
+        "stdint.h", "stddef.h", "stdio.h", "stdlib.h", "stdarg.h",
+        "string.h", "strings.h", "math.h", "time.h", "ctype.h",
+        "errno.h", "assert.h", "limits.h", "float.h", "inttypes.h",
+        // POSIX-y headers Arduino sketches sometimes reach for
+        "unistd.h", "sys/time.h",
     ];
-    CORE_PREFIXES.iter().any(|p| header.eq_ignore_ascii_case(p))
+    CORE_HEADERS.iter().any(|p| header.eq_ignore_ascii_case(p))
         || header.ends_with(".hpp") && header.starts_with("std")
         || !header.contains('.') // bare std headers like "vector", "string"
 }
@@ -163,6 +169,18 @@ mod tests {
             .iter().map(|s| s.to_string()).collect();
         let resolved = resolve(&headers, &fixture_libs(), dir.path(), &[]).unwrap();
         assert!(resolved.is_empty());
+    }
+
+    #[test]
+    fn skips_extended_c_stdlib_headers() {
+        // M2.C gap-fix: time.h, stdlib.h, etc. are C stdlib, not Arduino libs.
+        let dir = tempdir().unwrap();
+        let headers: BTreeSet<String> = [
+            "time.h", "stdlib.h", "stdarg.h", "ctype.h",
+            "errno.h", "assert.h", "limits.h", "unistd.h",
+        ].iter().map(|s| s.to_string()).collect();
+        let resolved = resolve(&headers, &fixture_libs(), dir.path(), &[]).unwrap();
+        assert!(resolved.is_empty(), "C stdlib headers must not trigger library resolution");
     }
 
     #[test]
