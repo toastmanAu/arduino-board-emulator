@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    listRecentProjects, listBoards, onBuildLog, onSerialLog,
+    listRecentProjects, listBoards, onBuildLog, onSerialLog, onGpioLog,
     type ProjectSummary, type BoardSummary,
   } from "./lib/api";
   import ProjectList   from "./lib/ProjectList.svelte";
@@ -12,34 +12,33 @@
   let selected:    string | null    = $state(null);
   let buildLines:  string[]         = $state([]);
   let serialLines: string[]         = $state([]);
+  let gpioLines:   string[]         = $state([]);
 
-  let unBuild: (() => void) | undefined;
-  let unSerial: (() => void) | undefined;
+  let unBuild:  (() => void) | null = null;
+  let unSerial: (() => void) | null = null;
+  let unGpio:   (() => void) | null = null;
 
   onMount(async () => {
     projects = await listRecentProjects();
     try {
       boards = await listBoards();
     } catch (e) {
-      // Surface in build panel as a startup error.
       buildLines = [`Could not list boards: ${e}`];
     }
 
-    unBuild  = await onBuildLog((line)  => buildLines  = [...buildLines, line]);
+    unBuild  = await onBuildLog((line)  => buildLines  = [...buildLines,  line]);
     unSerial = await onSerialLog((line) => serialLines = [...serialLines, line]);
+    unGpio   = await onGpioLog((line)   => gpioLines   = [...gpioLines,   line]);
   });
 
-  $effect.pre(() => {
-    return () => {
-      unBuild?.();
-      unSerial?.();
-    };
+  $effect(() => {
+    return () => { unBuild?.(); unSerial?.(); unGpio?.(); };
   });
 </script>
 
 <div class="layout">
   <ProjectList {projects} bind:selected />
-  <ProjectDetail project={selected} {boards} {buildLines} {serialLines} />
+  <ProjectDetail project={selected} {boards} {buildLines} {serialLines} {gpioLines} />
 </div>
 
 <style>
