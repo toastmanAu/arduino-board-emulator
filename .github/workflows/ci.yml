@@ -82,6 +82,10 @@ jobs:
         working-directory: crates/boardghost-launcher
         run: npm run check
 
+      - name: Build frontend (needed by tauri::generate_context!)
+        working-directory: crates/boardghost-launcher
+        run: npm run build
+
       - name: Cargo test (launcher backend)
         run: cargo test -p boardghost-launcher
 
