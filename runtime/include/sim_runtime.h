@@ -32,6 +32,10 @@ void sim_log_gpio_pwm(uint8_t pin, int value);
 // chain into C-only translation units. The implementation casts back.
 int sim_screenshot(const char* path, void* lgfx_device);
 
+// User code calls this once after creating its LGFX device to register it
+// as the screenshot target. Pass NULL on shutdown to unregister.
+void sim_set_active_display(void* lgfx_device);
+
 #ifdef __cplusplus
 }
 #endif

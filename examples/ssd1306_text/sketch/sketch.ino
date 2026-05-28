@@ -9,6 +9,7 @@ int frame = 0;
 void setup() {
     Serial.begin(115200);
     oled.init();
+    sim_set_active_display(&oled);
     oled.fillScreen(TFT_BLACK);
     oled.setTextColor(TFT_WHITE);
     Serial.println("ssd1306_text started");

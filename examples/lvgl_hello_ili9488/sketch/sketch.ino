@@ -19,6 +19,7 @@ static void btn_event(lv_event_t* e) {
 void setup() {
     Serial.begin(115200);
     tft.init();
+    sim_set_active_display(&tft);
     tft.setRotation(1);
 
     lv_init();
