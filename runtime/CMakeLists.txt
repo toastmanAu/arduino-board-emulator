@@ -15,6 +15,7 @@ add_library(sim_runtime STATIC
     src/sim_spi.cpp
     src/sim_wire.cpp
     src/sim_lvgl.cpp
+    src/sim_screenshot.cpp
 )
 
 target_include_directories(sim_runtime

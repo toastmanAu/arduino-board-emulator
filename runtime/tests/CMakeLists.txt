@@ -21,6 +21,7 @@ add_executable(runtime_tests
     test_displays_ssd1306.cpp
     test_displays_extra.cpp
     test_lvgl_init.cpp
+    test_screenshot.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 

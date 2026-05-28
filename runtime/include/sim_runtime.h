@@ -24,6 +24,14 @@ void sim_log_gpio_mode(uint8_t pin, uint8_t mode);
 void sim_log_gpio_write(uint8_t pin, uint8_t value);
 void sim_log_gpio_pwm(uint8_t pin, int value);
 
+// Forward declaration of an opaque LGFX_Device pointer — the caller passes
+// their active panel. Returns 0 on success, non-zero on error.
+//
+// NOTE: declared as `void*` in the C-facing header so that consumers can
+// pass any LovyanGFX device without dragging the full LovyanGFX include
+// chain into C-only translation units. The implementation casts back.
+int sim_screenshot(const char* path, void* lgfx_device);
+
 #ifdef __cplusplus
 }
 #endif
