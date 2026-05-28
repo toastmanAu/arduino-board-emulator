@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-use crate::{board::BoardProfile, codegen, compile, discover, preprocess};
+use crate::{
+    arduino_libs, board::BoardProfile, codegen, compile, discover, include_scan,
+    lib_resolve, libraries, preprocess,
+};
 
 pub struct BuildResult {
     pub binary: PathBuf,
@@ -14,44 +17,68 @@ pub fn run_build(
     runtime_dir: &Path,
     release: bool,
 ) -> Result<BuildResult> {
-    // Stage 1: Discover
+    // Stage 1: Discover sketch
     let discovered = discover::discover(project)
         .context("Stage 1: discover")?;
     eprintln!("→ Sketch: {:?}", discovered.entry);
 
-    // Resolve board profile
     let board = BoardProfile::load_by_name(boards_dir, board_name)
         .context("loading board profile")?;
     eprintln!("→ Board:  {} ({})", board.name, board.description);
 
-    // Stage 2: Preprocess
-    // Pass runtime include dirs so BoardGhost display headers (e.g. LGFX_SSD1306_SDL.hpp)
-    // are visible to the arduino-cli preprocessor's compiler.
+    // Stage 2a: Scan sketch for #include directives BEFORE preprocess so we can
+    // tell arduino-cli where the user's libraries live (otherwise preprocess
+    // fails on TimeLib.h-style "not found" errors).
+    let headers = include_scan::scan_file(&discovered.entry)
+        .with_context(|| format!("scan {:?}", discovered.entry))?;
+    eprintln!("→ Headers: {} includes scanned", headers.len());
+
+    // Stage 2b: Resolve headers → installed libraries (skipping shimmed ones).
+    let installed = arduino_libs::list_installed()
+        .context("arduino-cli lib list failed; install arduino-cli or check it's in PATH")?;
+    let overrides_dir = runtime_dir.join("library_overrides");
+    let resolved = lib_resolve::resolve(
+        &headers,
+        &installed,
+        &overrides_dir,
+        libraries::ALLOWLIST,
+    ).context("Stage 2b: library resolve")?;
+    if !resolved.is_empty() {
+        eprintln!("→ Auto-discovered libraries:");
+        for r in &resolved {
+            eprintln!("    • {} ({})", r.name, r.source_dir.display());
+        }
+    }
+
+    // Stage 2c: Preprocess via arduino-cli, with both runtime shim dirs AND
+    // discovered library include dirs.
     eprintln!("→ Preprocessing via arduino-cli...");
     let runtime_abs = runtime_dir.canonicalize()
         .with_context(|| format!("canonicalize runtime dir {:?}", runtime_dir))?;
-    let extra_includes = vec![
+    let mut extra_includes = vec![
         runtime_abs.join("displays"),
         runtime_abs.join("shims"),
         runtime_abs.join("third_party/LovyanGFX/src"),
-        // LVGL v9: sketch can include <lvgl.h> and <sim_lvgl.h>
         runtime_abs.join("third_party/lvgl"),
         runtime_abs.join("include"),
     ];
+    for lib in &resolved {
+        extra_includes.push(lib.source_dir.clone());
+        // Also add any post-substitution add_include_dirs (these reach absolute paths).
+        for inc in &lib.add_include_dirs {
+            let path = inc.replace("${BOARDGHOST_RUNTIME_DIR}", &runtime_abs.to_string_lossy());
+            extra_includes.push(PathBuf::from(path));
+        }
+    }
     let preprocessed = preprocess::preprocess(
         &discovered.entry,
         &board.arduino_fqbn_hint,
         &extra_includes,
-    ).context("Stage 2: preprocess")?;
-
-    // Stage 3: Library resolution
-    // (M2.C placeholder — lib_resolve::resolve wires headers → installed libs.
-    // Full integration with codegen happens in Tasks 6/7.)
+    ).context("Stage 2c: preprocess")?;
 
     // Stage 4: Codegen
     let out_dir = project.join(".boardghost").join(&board.name);
     std::fs::create_dir_all(&out_dir).context("create .boardghost dir")?;
-    // Canonicalize paths so CMakeLists.txt uses absolute paths regardless of CWD.
     let sketch_cpp_abs = preprocessed.canonicalize()
         .with_context(|| format!("canonicalize preprocessed file {:?}", preprocessed))?;
     let _ = codegen::generate_cmake(&codegen::CodegenInput {
@@ -60,7 +87,7 @@ pub fn run_build(
         runtime_dir: runtime_abs.clone(),
         release,
         out_dir:     out_dir.clone(),
-        libraries:   vec![],
+        libraries:   resolved,
     })?;
 
     // Stage 5: Compile

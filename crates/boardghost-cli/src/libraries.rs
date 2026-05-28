@@ -27,3 +27,22 @@ pub const ALLOWLIST: &[&str] = &[
 pub fn is_shimmed(lib: &str) -> bool {
     ALLOWLIST.iter().any(|a| a.eq_ignore_ascii_case(lib))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_libs_are_shimmed() {
+        assert!(is_shimmed("WiFi"));
+        assert!(is_shimmed("wifi"));        // case-insensitive
+        assert!(is_shimmed("HTTPClient"));
+        assert!(is_shimmed("LovyanGFX"));
+    }
+
+    #[test]
+    fn unknown_libs_are_not_shimmed() {
+        assert!(!is_shimmed("ArduinoJson"));
+        assert!(!is_shimmed("TimeLib"));
+    }
+}
