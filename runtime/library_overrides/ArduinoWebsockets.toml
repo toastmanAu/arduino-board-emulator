@@ -1,0 +1,5 @@
+# M2.C: ArduinoWebsockets has hardware-specific TCP transports in
+# `tiny_websockets/network/`. We ship a header-only shim
+# (`runtime/shims/ArduinoWebsockets.h`) that wins over the real library at
+# preprocess time, so the actual library sources are NOT compiled.
+shim_only = true

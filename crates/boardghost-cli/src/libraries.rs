@@ -22,6 +22,8 @@ pub const ALLOWLIST: &[&str] = &[
     "SD",
     "TinyGSM",
     "StreamDebugger",
+    // M2.C — shim wins via header-only override
+    "ArduinoWebsockets",
 ];
 
 pub fn is_shimmed(lib: &str) -> bool {
