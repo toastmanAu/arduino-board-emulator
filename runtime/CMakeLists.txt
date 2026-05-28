@@ -16,6 +16,7 @@ add_library(sim_runtime STATIC
     src/sim_wire.cpp
     src/sim_lvgl.cpp
     src/sim_screenshot.cpp
+    src/sim_net.cpp
 )
 
 target_include_directories(sim_runtime
@@ -33,6 +34,20 @@ target_link_libraries(sim_runtime PUBLIC SDL2::SDL2)
 if(NOT TARGET SDL2::SDL2)
     target_include_directories(sim_runtime PUBLIC ${SDL2_INCLUDE_DIRS})
     target_link_libraries(sim_runtime PUBLIC ${SDL2_LIBRARIES})
+endif()
+
+# Optional libcurl for BOARDGHOST_NET=real network mode.
+option(BOARDGHOST_WITH_CURL "Enable real-network mode for WiFi/HTTPClient shims" ON)
+if(BOARDGHOST_WITH_CURL)
+    find_package(CURL QUIET)
+    if(CURL_FOUND)
+        target_link_libraries(sim_runtime PUBLIC CURL::libcurl)
+        target_compile_definitions(sim_runtime PUBLIC BOARDGHOST_WITH_CURL=1)
+        message(STATUS "BoardGhost: libcurl ${CURL_VERSION_STRING} found — real-net mode enabled")
+    else()
+        set(BOARDGHOST_WITH_CURL OFF CACHE BOOL "" FORCE)
+        message(STATUS "BoardGhost: libcurl not found — real-net mode disabled (BOARDGHOST_NET=real will fall back to fake)")
+    endif()
 endif()
 
 # LovyanGFX PC backend — compiled from source against SDL2.

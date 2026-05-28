@@ -23,6 +23,7 @@ add_executable(runtime_tests
     test_lvgl_init.cpp
     test_screenshot.cpp
     test_touch_sdl.cpp
+    test_net_mode.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 
