@@ -22,6 +22,7 @@ fn generates_cmakelists_with_substitutions() {
         runtime_dir: repo.join("runtime"),
         release:     false,
         out_dir:     out_dir.clone(),
+        libraries:   vec![],
     };
     generate_cmake(&input).expect("codegen");
 
