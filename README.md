@@ -9,13 +9,16 @@ Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on y
 - 7 simulated panels (LovyanGFX + LVGL): ILI9488 480×320, ILI9341 320×240,
   ST7789 240×320, ST7796 480×320, GC9A01 240×240 round, ST7735 160×128,
   SSD1306 128×64 mono
-- Touch driver covering XPT2046 / FT6236 / GT911 — `tft.getTouch(&x, &y)`
-  works in user code on any touch-enabled board
-- Mouse → touch input (LVGL indev + LovyanGFX touch API)
-- `Serial.print` capture
+- Touch driver (XPT2046 / FT6236 / GT911 in board profiles; SDL-mouse-backed in sim)
+- Mouse + LovyanGFX touch API + LVGL indev
+- IoT library stubs: WiFi, WiFiClient, WiFiClientSecure, HTTPClient, EEPROM,
+  FS, SPIFFS, LittleFS, SD, TinyGsmClient, StreamDebugger
+- Configurable network: `BOARDGHOST_NET=fake|fail|real` (real mode uses libcurl)
+- Filesystem assets in `./sim-assets/<mount>/` (per-project, gitignorable)
+- EEPROM persists to `./.boardghost/eeprom.bin`
 - GPIO inspector (live pin-state grid in the launcher)
-- CLI: `boardghost {list-boards|doctor|build|run}` with `--screenshot PATH`
-- Tauri desktop launcher with GPIO inspector + screenshot button
+- CLI `--screenshot PATH` flag
+- Tauri desktop launcher
 - Headless mode (`SDL_VIDEODRIVER=dummy`) for CI
 
 ## What doesn't work yet

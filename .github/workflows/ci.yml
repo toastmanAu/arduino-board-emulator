@@ -16,7 +16,7 @@ jobs:
       - name: Install host deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libsdl2-dev
+          sudo apt-get install -y cmake ninja-build libsdl2-dev libcurl4-openssl-dev
           mkdir -p "$HOME/.local/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/.local/bin" sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"

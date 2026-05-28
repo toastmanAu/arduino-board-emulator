@@ -183,3 +183,44 @@ writes the PNG, and continues running.
 
 Note: your sketch must call `sim_set_active_display(&tft)` once after
 initializing its LGFX device. The bundled examples already do this.
+
+## 11. IoT stubs and network modes
+
+Most sketches reach for WiFi, HTTPClient, SPIFFS, EEPROM, TinyGsm etc.
+BoardGhost ships stubs for all of these. By default they pretend to
+succeed (`BOARDGHOST_NET=fake`) — `WiFi.begin()` returns `WL_CONNECTED`,
+`HTTPClient.GET()` returns 200 with empty body. Your UI paths run.
+
+Other modes:
+
+```bash
+BOARDGHOST_NET=fail boardghost run my-project --board ili9488_esp32s3_sim
+# WiFi.begin() returns WL_NO_SSID_AVAIL; HTTPClient.GET() returns -1.
+
+BOARDGHOST_NET=real boardghost run my-project --board ili9488_esp32s3_sim
+# HTTPClient.GET() actually fetches via libcurl. Requires libcurl at build
+# time; check with `cmake -S runtime -B runtime/build` (it logs whether
+# libcurl was found).
+```
+
+## 12. Sketch assets — `./sim-assets/`
+
+SPIFFS, LittleFS, and SD map to subdirectories under `<project>/sim-assets/`:
+
+- `SPIFFS.open("/main.jpg")` → `<project>/sim-assets/spiffs/main.jpg`
+- `LittleFS.open("/data.json")` → `<project>/sim-assets/littlefs/data.json`
+- `SD.open("/log.csv")` → `<project>/sim-assets/sd/log.csv`
+
+Drop your real files into those directories. Gitignore the whole
+`sim-assets/` if you don't want test fixtures in your repo.
+
+EEPROM/NVS state lives at `<project>/.boardghost/eeprom.bin` and survives
+across runs of `boardghost run`.
+
+Override either with env vars:
+
+```bash
+BOARDGHOST_ASSETS_DIR=/path/to/shared/test-fixtures \
+BOARDGHOST_EEPROM_PATH=/tmp/my-eeprom.bin \
+  boardghost run my-project --board ili9488_esp32s3_sim
+```
