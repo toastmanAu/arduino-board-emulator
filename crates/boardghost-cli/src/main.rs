@@ -17,13 +17,13 @@ fn main() -> Result<()> {
             println!("Built: {}", r.binary.display());
             Ok(())
         }
-        Command::Run { project, board, profile } => {
+        Command::Run { project, board, profile, screenshot } => {
             let boards  = boards_dir()?;
             let runtime = runtime_dir()?;
             let release = matches!(profile, BuildProfile::Release);
             let r = boardghost::build::run_build(&project, &board, &boards, &runtime, release)?;
             eprintln!("→ Launching {}...", r.binary.display());
-            let code = boardghost::run::exec_sketch(&r.binary)?;
+            let code = boardghost::run::exec_sketch(&r.binary, screenshot.as_deref())?;
             std::process::exit(code);
         }
     }

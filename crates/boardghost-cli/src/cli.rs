@@ -31,6 +31,10 @@ pub enum Command {
         board: String,
         #[arg(long, default_value = "debug")]
         profile: BuildProfile,
+        /// If set, the sketch will write a PNG to this path on SIGUSR1
+        /// (and the CLI will fire SIGUSR1 once 2 seconds after launch).
+        #[arg(long, value_name = "PNG_PATH")]
+        screenshot: Option<PathBuf>,
     },
 }
 
