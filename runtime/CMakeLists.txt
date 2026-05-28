@@ -17,6 +17,7 @@ add_library(sim_runtime STATIC
     src/sim_lvgl.cpp
     src/sim_screenshot.cpp
     src/sim_net.cpp
+    src/sim_wifi.cpp
 )
 
 target_include_directories(sim_runtime
