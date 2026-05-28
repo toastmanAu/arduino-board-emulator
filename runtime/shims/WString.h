@@ -55,6 +55,22 @@ public:
 
     char charAt(size_t i) const { return i < s_.size() ? s_[i] : '\0'; }
 
+    // write() / concat() — needed by ArduinoJson 7.x Writer<String> and
+    // ArduinoStringWriter specialisation when ARDUINO is defined.
+    size_t write(uint8_t c) { s_ += static_cast<char>(c); return 1; }
+    size_t write(const uint8_t* buf, size_t n) {
+        s_.append(reinterpret_cast<const char*>(buf), n); return n;
+    }
+    bool concat(const char* cstr) {
+        if (cstr) s_ += cstr;
+        return true;
+    }
+    bool concat(const String& o) { s_ += o.s_; return true; }
+
+    // Assignment from pointer (including null) — matches Arduino semantics.
+    String& operator=(const char* s) { s_ = s ? s : ""; return *this; }
+    String& operator=(const String& o) = default;
+
 private:
     std::string s_;
 };
