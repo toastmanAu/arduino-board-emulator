@@ -13,10 +13,10 @@ fn allows_known_libraries() {
 
 #[test]
 fn rejects_unknown_library() {
-    let input = vec!["LovyanGFX".to_string(), "WiFi".to_string()];
+    let input = vec!["LovyanGFX".to_string(), "UnknownLib".to_string()];
     let err = filter_allowed(&input).unwrap_err();
     let msg = format!("{err:#}");
-    assert!(msg.contains("WiFi"), "msg: {msg}");
+    assert!(msg.contains("UnknownLib"), "msg: {msg}");
     assert!(msg.contains("BOARDGHOST_SIM"), "msg: {msg}");
 }
 
@@ -31,4 +31,9 @@ fn allowlist_contains_expected_entries() {
     assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("LovyanGFX")));
     assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("lvgl")));
     assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("Adafruit_GFX")));
+    assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("WiFi")));
+    assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("HTTPClient")));
+    assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("EEPROM")));
+    assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("SPIFFS")));
+    assert!(ALLOWLIST.iter().any(|s| s.eq_ignore_ascii_case("TinyGSM")));
 }

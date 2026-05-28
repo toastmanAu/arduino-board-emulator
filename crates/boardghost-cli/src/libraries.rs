@@ -1,6 +1,23 @@
 use crate::error::BoardGhostError;
 
-pub const ALLOWLIST: &[&str] = &["LovyanGFX", "lvgl", "Adafruit_GFX"];
+pub const ALLOWLIST: &[&str] = &[
+    // M1 — graphics
+    "LovyanGFX",
+    "lvgl",
+    "Adafruit_GFX",
+    // M2.B — IoT stubs (these names match arduino-cli's library reports)
+    "WiFi",
+    "WiFiClient",
+    "WiFiClientSecure",
+    "HTTPClient",
+    "EEPROM",
+    "FS",
+    "SPIFFS",
+    "LittleFS",
+    "SD",
+    "TinyGSM",
+    "StreamDebugger",
+];
 
 pub fn filter_allowed(libs: &[String]) -> Result<Vec<String>, BoardGhostError> {
     for lib in libs {
