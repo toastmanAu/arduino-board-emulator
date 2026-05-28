@@ -38,4 +38,7 @@ pub enum BoardGhostError {
 
     #[error("CMake build failed (exit {exit}): {stderr}")]
     CmakeBuildFailed { exit: i32, stderr: String },
+
+    #[error("arduino-cli lib list failed: {stderr}")]
+    ArduinoLibListFailed { stderr: String },
 }

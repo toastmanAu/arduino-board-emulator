@@ -1,3 +1,4 @@
+pub mod arduino_libs;
 pub mod board;
 pub mod build;
 pub mod cli;

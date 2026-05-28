@@ -1,0 +1,22 @@
+{
+  "installed_libraries": [
+    {
+      "library": {
+        "name": "ArduinoJson",
+        "install_dir": "/tmp/Arduino/libraries/ArduinoJson",
+        "source_dir": "/tmp/Arduino/libraries/ArduinoJson/src",
+        "layout": "recursive",
+        "provides_includes": ["ArduinoJson.h", "ArduinoJson.hpp"]
+      }
+    },
+    {
+      "library": {
+        "name": "Time",
+        "install_dir": "/tmp/Arduino/libraries/Time",
+        "source_dir": "/tmp/Arduino/libraries/Time",
+        "layout": "flat",
+        "provides_includes": ["TimeLib.h", "Time.h"]
+      }
+    }
+  ]
+}
