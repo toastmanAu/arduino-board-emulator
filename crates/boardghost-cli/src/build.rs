@@ -33,21 +33,19 @@ pub fn run_build(
         .with_context(|| format!("scan {:?}", discovered.entry))?;
     eprintln!("→ Headers: {} includes scanned", headers.len());
 
-    // Stage 2a.1: drop headers that are findable on disk in the sketch dir or
-    // a BoardGhost runtime helper dir (displays/, include/). Do NOT include
-    // runtime/shims/ here — that dir contains both full shims (WiFi, HTTPClient,
-    // etc. — handled via libraries::ALLOWLIST short-circuit in lib_resolve) and
-    // empty stubs (ArduinoJson.h, etc.) where we WANT discovery to find the
-    // real library and the stub only exists to keep compile lookups happy.
+    // Stage 2a.1: drop headers findable on disk in the sketch dir or a
+    // BoardGhost runtime helper dir (displays/, include/). See
+    // include_scan::filter_local_headers for the runtime/shims/ exclusion
+    // rationale.
     let sketch_dir = discovered.entry.parent().unwrap_or(Path::new("."));
-    let local_search_dirs: Vec<PathBuf> = vec![
-        sketch_dir.to_path_buf(),
-        runtime_dir.join("displays"),
-        runtime_dir.join("include"),
+    let displays_dir = runtime_dir.join("displays");
+    let include_dir = runtime_dir.join("include");
+    let local_search_dirs: [&Path; 3] = [
+        sketch_dir,
+        &displays_dir,
+        &include_dir,
     ];
-    let library_headers: std::collections::BTreeSet<String> = headers.into_iter()
-        .filter(|h| !local_search_dirs.iter().any(|d| d.join(h).exists()))
-        .collect();
+    let library_headers = include_scan::filter_local_headers(headers, &local_search_dirs);
 
     // Stage 2b: Resolve headers → installed libraries (skipping shimmed ones).
     let installed = arduino_libs::list_installed()
