@@ -6,6 +6,8 @@
 #include <sys/select.h>
 
 SerialClass Serial;
+SerialClass Serial1;  // Stub for modem/secondary UART (no-op in sim)
+SerialClass Serial2;  // Stub for tertiary UART (no-op in sim)
 
 size_t SerialClass::print(const char* s)        { return std::fputs(s, stdout) >= 0 ? std::strlen(s) : 0; }
 size_t SerialClass::print(const String& s)      { return print(s.c_str()); }

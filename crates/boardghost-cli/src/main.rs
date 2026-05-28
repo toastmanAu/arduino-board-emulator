@@ -23,7 +23,7 @@ fn main() -> Result<()> {
             let release = matches!(profile, BuildProfile::Release);
             let r = boardghost::build::run_build(&project, &board, &boards, &runtime, release)?;
             eprintln!("→ Launching {}...", r.binary.display());
-            let code = boardghost::run::exec_sketch(&r.binary, screenshot.as_deref())?;
+            let code = boardghost::run::exec_sketch(&r.binary, screenshot.as_deref(), Some(&project))?;
             std::process::exit(code);
         }
     }

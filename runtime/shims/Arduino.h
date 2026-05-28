@@ -72,4 +72,15 @@ public:
 };
 
 extern SerialClass Serial;
+extern SerialClass Serial1;
+extern SerialClass Serial2;
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+// yield() — Arduino cooperative multitasking hook; no-op in sim.
+inline void yield(void) {}
+#ifdef __cplusplus
+}
 #endif

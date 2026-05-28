@@ -68,3 +68,56 @@ private:
 #define FILE_READ   "r"
 #define FILE_WRITE  "w"
 #define FILE_APPEND "a"
+
+// -----------------------------------------------------------------------
+// LovyanGFX DataWrapper specializations for fs::File and fs::FS.
+//
+// LovyanGFX's drawJpgFile(T& fs, ...) instantiates DataWrapperT<T>.
+// We must specialise DataWrapperT for our shim fs::FS (and fs::File)
+// so the template can be instantiated with concrete virtual-method bodies.
+// These specializations mirror the ones in LovyanGFX's esp8266/common.hpp.
+// -----------------------------------------------------------------------
+#ifdef BOARDGHOST_SIM
+#include "lgfx/v1/misc/DataWrapper.hpp"
+
+namespace lgfx { inline namespace v1 {
+
+  template <>
+  struct DataWrapperT<fs::File> : public DataWrapper {
+    DataWrapperT(fs::File* fp = nullptr) : DataWrapper{}, _fp { fp } {
+      need_transaction = false;
+    }
+    int     read(uint8_t* buf, uint32_t len) override {
+      if (!_fp) return 0;
+      return (int)_fp->read(buf, len);
+    }
+    void    skip(int32_t offset) override {
+      if (!_fp) return;
+      _fp->seek((uint32_t)(_fp->position() + offset));
+    }
+    bool    seek(uint32_t offset) override {
+      if (!_fp) return false;
+      return _fp->seek(offset);
+    }
+    void    close(void) override { if (_fp) _fp->close(); }
+    int32_t tell(void) override { return _fp ? (int32_t)_fp->position() : 0; }
+  protected:
+    fs::File* _fp;
+  };
+
+  template <>
+  struct DataWrapperT<fs::FS> : public DataWrapperT<fs::File> {
+    DataWrapperT(fs::FS* fs, fs::File* fp = nullptr)
+      : DataWrapperT<fs::File>{ fp }, _fs { fs } {}
+    bool open(const char* path) override {
+      _file = _fs->open(path, "r");
+      DataWrapperT<fs::File>::_fp = &_file;
+      return (bool)_file;
+    }
+  protected:
+    fs::FS*  _fs;
+    fs::File _file;
+  };
+
+}}  // namespace lgfx::v1
+#endif  // BOARDGHOST_SIM

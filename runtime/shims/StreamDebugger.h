@@ -15,6 +15,9 @@ public:
     void flush()                      {}
 };
 
-// Real lib uses StreamDebugger as a non-template. Provide a forwarding alias.
-class HardwareSerial;  // forward-declare; ESP32 core defines this.
-using StreamDebugger = StreamDebuggerT<HardwareSerial, HardwareSerial>;
+// Real lib uses StreamDebugger as a non-template alias.
+// In the sim, SerialClass is used for all serial ports (Serial, Serial1, etc.).
+// We need StreamDebugger to accept SerialClass& arguments — use SerialClass here.
+// This must match the type used in Serial/Serial1 declarations in Arduino.h.
+class SerialClass;  // forward-declare (defined in Arduino.h / sim_serial.cpp)
+using StreamDebugger = StreamDebuggerT<SerialClass, SerialClass>;

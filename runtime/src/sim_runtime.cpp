@@ -14,6 +14,7 @@ namespace {
     std::atomic<int>         g_should_quit{0};
     std::atomic<void*>       g_active_display{nullptr};
     std::atomic<int>         g_screenshot_requested{0};
+    std::atomic<int>         g_screenshot_done{0};  // set by watcher thread after taking screenshot
     clock_type::time_point   g_start;
 
     struct PinState {
@@ -26,8 +27,41 @@ namespace {
     PinState g_pins[MAX_PINS];
 
     void sigusr1_handler(int /*sig*/) {
-        // Signal-safe: just flip a flag. Real work happens in sim_pump_events.
+        // Signal-safe: just flip a flag. The background watcher thread handles
+        // the actual screenshot so the main thread doesn't need to be unblocked.
         g_screenshot_requested.store(1);
+    }
+
+    // Background watcher thread: takes screenshots without needing the main thread.
+    // This decouples screenshot capture from sketch execution — the sketch can be
+    // blocked in calibrateTouch or a long drawing operation and the screenshot
+    // still fires on schedule.
+    void screenshot_watcher_thread() {
+        while (!g_should_quit.load()) {
+            if (g_screenshot_requested.exchange(0) == 1) {
+                // Wait briefly for display to become registered if it isn't yet
+                for (int retries = 0; retries < 50 && !g_active_display.load(); ++retries) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                if (void* dev = g_active_display.load()) {
+                    const char* path = std::getenv("BOARDGHOST_SCREENSHOT_PATH");
+                    if (!path) path = "/tmp/boardghost-screenshot.png";
+                    std::fprintf(stderr,
+                        "[boardghost] screenshot_watcher: taking screenshot → %s (display=%p)\n",
+                        path, dev);
+                    // Small extra settle delay so the frame is rendered
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    int rc = sim_screenshot(path, dev);
+                    std::fprintf(stderr,
+                        "[boardghost] screenshot_watcher: sim_screenshot rc=%d\n", rc);
+                    g_screenshot_done.store(1);
+                } else {
+                    std::fprintf(stderr,
+                        "[boardghost] screenshot_watcher: no display registered, screenshot skipped\n");
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
 
     void load_analog_env_overrides() {
@@ -45,6 +79,7 @@ extern "C" {
 
 void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     g_should_quit.store(0);
+    g_screenshot_done.store(0);
     g_start = clock_type::now();
     for (auto& p : g_pins) p = PinState{};
     load_analog_env_overrides();
@@ -53,6 +88,10 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     }
     std::signal(SIGUSR1, sigusr1_handler);
     lgfx::Panel_sdl::setup();
+    // Start background watcher thread for screenshot capture.
+    // This runs independently of the sketch so screenshots fire even when the
+    // main thread is blocked in drawing calls (e.g. calibrateTouch).
+    std::thread(screenshot_watcher_thread).detach();
 }
 
 void sim_runtime_shutdown(void) {
@@ -68,14 +107,8 @@ void sim_pump_events(void) {
     SDL_Event events[8];
     int n = SDL_PeepEvents(events, 8, SDL_GETEVENT, SDL_QUIT, SDL_QUIT);
     if (n > 0) g_should_quit.store(1);
-
-    if (g_screenshot_requested.exchange(0) == 1) {
-        if (void* dev = g_active_display.load()) {
-            const char* path = std::getenv("BOARDGHOST_SCREENSHOT_PATH");
-            if (!path) path = "/tmp/boardghost-screenshot.png";
-            sim_screenshot(path, dev);
-        }
-    }
+    // Screenshots are handled by the background watcher thread (screenshot_watcher_thread).
+    // No screenshot logic needed here.
 }
 
 int sim_should_quit(void) {
@@ -157,6 +190,7 @@ void analogWrite(uint8_t pin, int value) {
 
 void sim_set_active_display(void* lgfx_device) {
     g_active_display.store(lgfx_device);
+    std::fprintf(stderr, "[boardghost] sim_set_active_display: device=%p\n", lgfx_device);
 }
 
 } // extern "C"
