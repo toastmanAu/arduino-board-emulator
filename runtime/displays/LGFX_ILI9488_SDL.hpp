@@ -1,5 +1,6 @@
 #pragma once
 #include <LovyanGFX.hpp>
+#include "Touch_sdl.hpp"
 
 // ILI9488 display simulator: 480x320, SDL framebuffer backend.
 //
@@ -19,8 +20,10 @@ public:
         cfg.offset_rotation = 0;
         panel_.config(cfg);
         setPanel(&panel_);
+        panel_.setTouch(&touch_);
     }
 
 private:
     lgfx::Panel_sdl panel_;
+    Touch_sdl       touch_;
 };

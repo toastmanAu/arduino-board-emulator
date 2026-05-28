@@ -1,5 +1,6 @@
 #pragma once
 #include <LovyanGFX.hpp>
+#include "Touch_sdl.hpp"
 
 class LGFX_ILI9341_SDL : public lgfx::LGFX_Device {
 public:
@@ -14,8 +15,10 @@ public:
         cfg.offset_rotation = 0;
         panel_.config(cfg);
         setPanel(&panel_);
+        panel_.setTouch(&touch_);
     }
 
 private:
     lgfx::Panel_sdl panel_;
+    Touch_sdl       touch_;
 };
