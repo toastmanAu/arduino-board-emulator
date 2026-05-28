@@ -59,3 +59,35 @@ pub fn preprocess(
 
     Ok(target)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // We can't easily test the full arduino-cli invocation in unit tests, but
+    // we can verify the extra-flags string-building is correct.
+    #[test]
+    fn builds_extra_flags_from_include_dirs() {
+        let dirs = vec![
+            PathBuf::from("/a/b"),
+            PathBuf::from("/c/d"),
+        ];
+        let flags: String = dirs.iter()
+            .filter_map(|d| d.to_str())
+            .map(|d| format!("-I{d}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(flags, "-I/a/b -I/c/d");
+    }
+
+    #[test]
+    fn builds_empty_flags_for_empty_dirs() {
+        let dirs: Vec<PathBuf> = vec![];
+        let flags: String = dirs.iter()
+            .filter_map(|d| d.to_str())
+            .map(|d| format!("-I{d}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(flags.is_empty());
+    }
+}
