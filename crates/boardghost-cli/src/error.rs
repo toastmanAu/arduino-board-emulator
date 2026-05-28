@@ -26,12 +26,13 @@ pub enum BoardGhostError {
     #[error("arduino-cli not found in PATH; run `boardghost doctor` to diagnose")]
     ArduinoCliMissing,
 
-    #[error("Library {name} is not shimmed in M1.\n  \
-             Allowed: LovyanGFX, lvgl, Adafruit_GFX.\n  \
-             To skip this code in sim builds:\n    \
-             #ifndef BOARDGHOST_SIM\n      // your real-hardware code\n    \
-             #endif")]
-    UnsupportedLibrary { name: String },
+    #[error("Header <{header}> is not provided by any installed Arduino library.\n  \
+             Try: arduino-cli lib search <name> && arduino-cli lib install <name>\n  \
+             Or shim it under runtime/shims/.")]
+    LibraryNotInstalled { header: String },
+
+    #[error("Library {name} resolved but no source files were globbed (check library_overrides/{name}.toml).")]
+    LibraryEmpty { name: String },
 
     #[error("CMake configure failed (exit {exit}): {stderr}")]
     CmakeConfigureFailed { exit: i32, stderr: String },

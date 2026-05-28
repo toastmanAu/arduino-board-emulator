@@ -44,13 +44,9 @@ pub fn run_build(
         &extra_includes,
     ).context("Stage 2: preprocess")?;
 
-    // Stage 3: Library allowlist
-    // (M1 placeholder — uses #include-line scan rather than --show-properties;
-    // upgrade to --show-properties in a follow-up if needed.)
-    // For now we skip the allowlist check here and rely on compile-time errors
-    // from unshimmed headers. Stage 3's filter_allowed is exercised by unit tests
-    // and will be wired into the pipeline once arduino-cli library introspection
-    // is integrated.
+    // Stage 3: Library resolution
+    // (M2.C placeholder — lib_resolve::resolve wires headers → installed libs.
+    // Full integration with codegen happens in Tasks 6/7.)
 
     // Stage 4: Codegen
     let out_dir = project.join(".boardghost").join(&board.name);
