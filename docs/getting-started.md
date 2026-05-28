@@ -147,3 +147,39 @@ boardghost doctor
 ```
 
 **Note:** In dev mode the launcher auto-locates the runtime tree, but production binaries currently require `BOARDGHOST_BOARDS` and `BOARDGHOST_RUNTIME` environment variables to find the board definitions and simulator resources. (Resource bundling is planned for M2.)
+
+## 9. GPIO inspector
+
+The desktop launcher displays a live grid of GPIO pins under the Serial monitor.
+Calls to `pinMode()`, `digitalWrite()`, and `analogWrite()` in your sketch are
+streamed to the launcher and visualised in real time:
+
+- Dark grey: pin not yet used
+- Bright green: pin OUTPUT, HIGH
+- Dark grey w/ outline: pin OUTPUT, LOW
+- Warm gradient: pin PWM, brightness scales with duty
+- Hover for full state details
+
+Headless / CLI-only users see the same data as `[gpio]` lines on stderr.
+
+## 10. Screenshot capture
+
+Two ways to capture the simulated panel:
+
+**From the launcher:** while the sketch is running, click `📷 Screenshot`.
+The PNG is written to `/tmp/boardghost-screenshot.png` and the path is
+displayed in the UI.
+
+**From the CLI:**
+
+```bash
+boardghost run examples/lvgl_hello_ili9488 \
+  --board ili9488_esp32s3_sim \
+  --screenshot /tmp/demo.png
+```
+
+The CLI sends `SIGUSR1` to the sketch ~2 seconds after launch, the sketch
+writes the PNG, and continues running.
+
+Note: your sketch must call `sim_set_active_display(&tft)` once after
+initializing its LGFX device. The bundled examples already do this.

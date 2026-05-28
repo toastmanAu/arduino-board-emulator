@@ -2,23 +2,26 @@
 
 Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on your desktop. No flashing, no real hardware.
 
-**Status:** M1 shipping. Engine + CLI tagged at `m1a-engine`. Launcher (M1.B) building.
+**Status:** M2.A complete. Engine, CLI, launcher, and 7 displays + touch + GPIO + screenshot shipping.
 
-## What works (M1.A)
+## What works
 
-- ILI9488 480×320 simulated panel
-- SSD1306 128×64 mono simulated panel
-- LovyanGFX + LVGL v9 graphics
-- Mouse → touch input
-- `Serial.print`/`println`/`printf` capture
+- 7 simulated panels (LovyanGFX + LVGL): ILI9488 480×320, ILI9341 320×240,
+  ST7789 240×320, ST7796 480×320, GC9A01 240×240 round, ST7735 160×128,
+  SSD1306 128×64 mono
+- Touch driver covering XPT2046 / FT6236 / GT911 — `tft.getTouch(&x, &y)`
+  works in user code on any touch-enabled board
+- Mouse → touch input (LVGL indev + LovyanGFX touch API)
+- `Serial.print` capture
+- GPIO inspector (live pin-state grid in the launcher)
+- CLI: `boardghost {list-boards|doctor|build|run}` with `--screenshot PATH`
+- Tauri desktop launcher with GPIO inspector + screenshot button
 - Headless mode (`SDL_VIDEODRIVER=dummy`) for CI
-- Tauri desktop launcher (`npm run tauri dev` in `crates/boardghost-launcher`)
 
 ## What doesn't work yet
 
-- Other display controllers (ILI9341, ST7789, ST7796, GC9A01, SH1106, ST7735) — M2
-- GPIO inspector / virtual buttons — M2
-- SPI/I2C transaction decoding — M2
+- SH1106 display controller — future release
+- SPI/I2C transaction decoding — future release
 - WiFi, BLE, FreeRTOS, ESP-IDF native — out of scope for the foreseeable future
 
 ## Requirements
