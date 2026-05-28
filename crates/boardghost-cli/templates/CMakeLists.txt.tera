@@ -5,9 +5,8 @@ project(boardghost_sketch CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Bring in the runtime as an external project (already built or in-tree).
 set(BOARDGHOST_RUNTIME_DIR "{{ runtime_dir }}" CACHE PATH "")
-add_subdirectory(${BOARDGHOST_RUNTIME_DIR} ${CMAKE_BINARY_DIR}/runtime_build)
+add_subdirectory("{{ runtime_dir }}" ${CMAKE_BINARY_DIR}/runtime_build)
 
 add_executable(sketch
     {{ sketch_cpp }}
@@ -16,12 +15,40 @@ add_executable(sketch
 
 target_link_libraries(sketch PRIVATE sim_runtime)
 
-# Board profile defines
 target_compile_definitions(sketch PRIVATE
     BOARD_PROFILE_NAME="{{ board_name }}"
     BOARD_DISPLAY_WIDTH={{ display_width }}
     BOARD_DISPLAY_HEIGHT={{ display_height }}
 )
 
-# Optimization
 {% if release %}target_compile_options(sketch PRIVATE -O2){% else %}target_compile_options(sketch PRIVATE -O0 -g){% endif %}
+
+# === M2.C: Auto-discovered Arduino libraries ===
+{% for lib in libraries %}
+# Library: {{ lib.name }}
+target_include_directories(sketch PRIVATE
+    "{{ lib.source_dir }}"
+{%- for inc in lib.add_include_dirs %}
+    "{{ inc }}"
+{%- endfor %}
+)
+
+{% if not lib.shim_only and lib.glob_patterns %}
+file(GLOB_RECURSE {{ lib.cmake_var_name }}
+{%- for pat in lib.glob_patterns %}
+    "{{ lib.source_dir }}/{{ pat }}"
+{%- endfor %}
+)
+{%- for excl_dir in lib.exclude_dirs %}
+list(FILTER {{ lib.cmake_var_name }} EXCLUDE REGEX "{{ lib.source_dir }}/{{ excl_dir }}/.*")
+{%- endfor %}
+{%- for excl_file in lib.exclude_files %}
+list(FILTER {{ lib.cmake_var_name }} EXCLUDE REGEX "{{ lib.source_dir }}/{{ excl_file }}$")
+{%- endfor %}
+
+if({{ lib.cmake_var_name }})
+    target_sources(sketch PRIVATE {{ "${" ~ lib.cmake_var_name ~ "}" }})
+    set_source_files_properties({{ "${" ~ lib.cmake_var_name ~ "}" }} PROPERTIES COMPILE_FLAGS "-w")
+endif()
+{% endif %}
+{% endfor %}

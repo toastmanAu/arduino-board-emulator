@@ -60,6 +60,7 @@ pub fn run_build(
         runtime_dir: runtime_abs.clone(),
         release,
         out_dir:     out_dir.clone(),
+        libraries:   vec![],
     })?;
 
     // Stage 5: Compile
