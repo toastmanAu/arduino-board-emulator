@@ -10,24 +10,97 @@
 #pragma once
 #include <LovyanGFX.hpp>
 #include <cstdlib>
+#include <cstring>
+#include <cstdint>
+#include <vector>
 
 class Panel_sdl_bg : public lgfx::Panel_sdl {
 public:
+    Panel_sdl_bg() {
+        // Optional screen-coordinate scripted touches: same format as
+        // BOARDGHOST_SIM_TOUCHES but the coords are interpreted as final
+        // screen pixels (auto-rotated for the panel). Lets users write
+        // intuitive (x, y) values without computing the inverse of the
+        // hardware rotation manually.
+        if (const char* v = std::getenv("BOARDGHOST_SIM_TOUCHES_SCREEN")) {
+            const char* p = v;
+            while (*p) {
+                long t = std::strtol(p, (char**)&p, 10);
+                if (*p != ':') break;
+                ++p;
+                long x = std::strtol(p, (char**)&p, 10);
+                if (*p != ',') break;
+                ++p;
+                long y = std::strtol(p, (char**)&p, 10);
+                screen_taps_.push_back({(uint32_t)t, (int16_t)x, (int16_t)y});
+                if (*p == ';') ++p;
+                else break;
+            }
+        }
+    }
+
     uint_fast8_t getTouchRaw(lgfx::touch_point_t* tp, uint_fast8_t count) override {
-        // When BOARDGHOST_SIM_TOUCHES is set, force identity calibration so
-        // scripted screen-pixel coordinates pass through unchanged. Sketches
-        // with hardware-tuned calibration (e.g. an XPT2046 mapping raw 0-4095
-        // to screen 0-320) would otherwise transform our scripted coords into
-        // off-screen values. The user's setTouchCalibrate() still runs; we
-        // just override its effect on every touch read while scripted mode
-        // is active.
-        if (std::getenv("BOARDGHOST_SIM_TOUCHES")) {
+        // When BOARDGHOST_SIM_TOUCHES* is set, force identity calibration so
+        // scripted coords aren't transformed by the user's hardware-tuned
+        // setTouchCalibrate() matrix.
+        if (std::getenv("BOARDGHOST_SIM_TOUCHES")
+            || !screen_taps_.empty())
+        {
             float identity[6] = {1, 0, 0, 0, 1, 0};
             setCalibrateAffine(identity);
         }
+
+        // Screen-coord scripted touches: emit a press within an 80ms window
+        // after each scheduled time. We pre-derotate based on the panel's
+        // current rotation state so convertRawXY (which runs after this) cancels
+        // out and the user's lcd.getTouch() sees the original screen coords.
+        if (!screen_taps_.empty()) {
+            if (start_ms_ == 0) start_ms_ = SDL_GetTicks();
+            uint32_t now = SDL_GetTicks() - start_ms_;
+            while (screen_idx_ < screen_taps_.size()
+                   && now > screen_taps_[screen_idx_].when_ms + 80) {
+                ++screen_idx_;
+            }
+            if (screen_idx_ < screen_taps_.size()) {
+                const auto& s = screen_taps_[screen_idx_];
+                if (now >= s.when_ms && now <= s.when_ms + 80) {
+                    auto r = compute_effective_rotation();
+                    int16_t rx = s.x;
+                    int16_t ry = s.y;
+                    // Inverse of convertRawXY's rotation step.
+                    bool vflip = (1 << r) & 0b10010110;
+                    if (r) {
+                        if (vflip)   ry = (int16_t)((_height - 1) - ry);
+                        if (r & 2)   rx = (int16_t)((_width  - 1) - rx);
+                        if (r & 1)   std::swap(rx, ry);
+                    }
+                    tp[0].x = rx;
+                    tp[0].y = ry;
+                    tp[0].size = 1;
+                    tp[0].id = 0;
+                    return 1;
+                }
+            }
+        }
+
         if (touch()) {
             return touch()->getTouchRaw(tp, count);
         }
         return lgfx::Panel_sdl::getTouchRaw(tp, count);
+    }
+
+private:
+    struct ScreenTap { uint32_t when_ms; int16_t x; int16_t y; };
+    std::vector<ScreenTap> screen_taps_;
+    size_t   screen_idx_ = 0;
+    uint32_t start_ms_   = 0;
+
+    uint_fast8_t compute_effective_rotation() const {
+        auto r = _internal_rotation;
+        if (touch()) {
+            auto offset = touch()->config().offset_rotation;
+            r = ((r + offset) & 3) | ((r & 4) ^ (offset & 4));
+        }
+        return r;
     }
 };

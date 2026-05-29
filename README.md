@@ -2,7 +2,7 @@
 
 Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on your desktop. No flashing, no real hardware.
 
-**Status:** M2.A complete. Engine, CLI, launcher, and 7 displays + touch + GPIO + screenshot shipping.
+**Status:** Through M2.E. Engine, CLI, launcher, 7 displays + touch + GPIO + screenshot, IoT library auto-discovery, LGFX hardware-setup codemod, scripted touch primitive. cryptoTickerv3 (4389 lines) verified running interactively.
 
 ## What works
 
@@ -141,3 +141,57 @@ If your sketch calls `lcd.calibrateTouch(...)`, set
 `BOARDGHOST_AUTO_TOUCH_CAL=1` in the environment so the sim's Touch_sdl
 cycles through screen corners automatically and the calibration completes
 without user input.
+
+## Running real-world sketches
+
+The full workflow that gets a non-trivial 4000+ line user sketch interactive
+in the sim:
+
+```bash
+# 1. Install the sketch's library dependencies via arduino-cli (M2.C
+#    auto-discovers anything installed in ~/Arduino/libraries/).
+arduino-cli lib install ArduinoJson "ESP32Time" "ArduinoWebsockets" "Time"
+
+# 2. Drop placeholder assets the sketch tries to load from SPIFFS —
+#    boardghost mounts ./sim-assets/spiffs/ as the SPIFFS root. Any tiny
+#    JPG/PNG will satisfy the decoder; real artwork can be copied in.
+mkdir -p path/to/your-sketch/sim-assets/spiffs
+# (drop your-png-files-here)
+
+# 3. Build + run with the helpers most LovyanGFX touchscreens need.
+SDL_VIDEODRIVER=dummy \
+BOARDGHOST_AUTO_TOUCH_CAL=1 \
+BOARDGHOST_SCREENSHOT_DELAY_MS=8000 \
+boardghost run --board st7789_esp32s3_sim \
+               --screenshot /tmp/preview.png \
+               path/to/your-sketch
+```
+
+### Env vars the cryptoTickerv3-class sketch flow uses
+
+| Variable | Purpose |
+|---|---|
+| `BOARDGHOST_NET=fake\|fail\|real` | WiFi + HTTPClient behavior. `fake` returns synthetic success, `real` uses libcurl. |
+| `BOARDGHOST_AUTO_TOUCH_CAL=1` | `lcd.calibrateTouch()` auto-completes via synthesized corner taps. |
+| `BOARDGHOST_SIM_TOUCHES_SCREEN="t_ms:x,y;..."` | Fire scripted taps at screen-pixel coords (rotation-aware). Useful for driving menus from CI / scripts. |
+| `BOARDGHOST_SIM_TOUCHES="t_ms:x,y;..."` | Same idea but coords are **raw pre-rotation** values. Lower-level escape hatch. |
+| `BOARDGHOST_SCREENSHOT_DELAY_MS=N` | Override the 2s default delay before screenshot fires (heavy `setup()` may need 5-10s). |
+| `BOARDGHOST_ASSETS_DIR=/path` | SPIFFS/LittleFS/SD mount root (auto-set by `boardghost run`). |
+| `BOARDGHOST_EEPROM_PATH=/path/file.bin` | Where EEPROM persists (auto-set to `.boardghost/eeprom.bin` by `boardghost run`). |
+
+### Driving a sketch from a test script
+
+Worked end-to-end with cryptoTickerv3 (a 4389-line ESP32-S3 LovyanGFX
+crypto-ticker app):
+
+```bash
+SDL_VIDEODRIVER=dummy \
+BOARDGHOST_AUTO_TOUCH_CAL=1 \
+BOARDGHOST_SIM_TOUCHES_SCREEN="3000:50,125" \
+BOARDGHOST_ASSETS_DIR=~/Arduino/arduinoProjects/cryptoTickerv3/sim-assets \
+./.boardghost/st7789_esp32s3_sim/build/sketch
+# → setup() runs (touch cal + WiFi + drawMenu)
+# → at t=3000ms, a tap at screen (50, 125) fires
+# → user's loop() picks it up, dispatches to Rankings page
+# → Serial output: "50, 125" / "10" / "1" / "Loading Rankings"
+```
