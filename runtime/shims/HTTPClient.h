@@ -38,10 +38,10 @@ public:
     bool   begin(const String& host, uint16_t port, const String& uri);
     void   end();
 
-    void   addHeader(const String& /*name*/, const String& /*value*/) {}
-    void   setTimeout(uint32_t /*ms*/) {}
-    void   setUserAgent(const String& /*ua*/) {}
-    void   setAuthorization(const char* /*user*/, const char* /*pw*/) {}
+    void   addHeader(const String& name, const String& value);
+    void   setTimeout(uint32_t ms)                { timeout_ms_ = ms; }
+    void   setUserAgent(const String& ua)         { user_agent_ = ua; }
+    void   setAuthorization(const char* user, const char* pw);
     void   setReuse(bool /*reuse*/) {}
 
     int    GET();
@@ -71,4 +71,13 @@ private:
     String url_;
     String body_;
     int    last_code_ = HTTPC_ERROR_NOT_CONNECTED;
+    // Stored headers + auth + UA + timeout — forwarded to libcurl in
+    // BOARDGHOST_NET=real mode. Up to 16 user headers; more is rare and
+    // keeps the shim simple. Each header stored as a single "Name: Value"
+    // line for direct curl_slist_append.
+    String  hdr_lines_[16];
+    int     hdr_count_      = 0;
+    String  user_agent_;
+    String  auth_header_;   // "Authorization: Basic <base64>" when set
+    uint32_t timeout_ms_    = 30000;
 };

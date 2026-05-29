@@ -16,6 +16,20 @@ namespace {
     std::atomic<void*>       g_active_display{nullptr};
     std::atomic<int>         g_screenshot_requested{0};
     std::atomic<int>         g_screenshot_done{0};  // set by watcher thread after taking screenshot
+    // Sketches commonly initialise globals as `long x = millis() - 300000`
+    // (5 minutes ago) or `long y = millis() - 900000` (15 min ago) so that
+    // their first staleness check `if (millis() - x > 300000)` immediately
+    // fires. On ESP32 `long` is 32-bit and the underflow wraps cleanly to a
+    // negative-looking value that arithmetic recovers from. On 64-bit Linux
+    // `long` is 64-bit, so the uint32_t underflow gets zero-extended into a
+    // huge positive number and the staleness check is broken forever.
+    //
+    // The simplest fix that doesn't touch user code: seed our clock so
+    // millis() at first call returns a value larger than the largest
+    // millisecond constant sketches subtract. 1 hour covers every realistic
+    // timeout interval we've seen.
+    constexpr auto kMillisOffset = std::chrono::hours(1);
+
     // Use Meyers' singleton for the start timestamp. Static init order
     // across translation units is undefined, so a plain `g_start` here
     // might still be default-constructed (epoch) when user-global code
@@ -23,7 +37,7 @@ namespace {
     // guarantees initialisation on first access, no matter which TU's
     // global ctors run first.
     clock_type::time_point& g_start() {
-        static clock_type::time_point start = clock_type::now();
+        static clock_type::time_point start = clock_type::now() - kMillisOffset;
         return start;
     }
 
