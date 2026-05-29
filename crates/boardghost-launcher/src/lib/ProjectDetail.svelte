@@ -1,8 +1,16 @@
 <script lang="ts">
-  import { buildAndRun, stop, screenshot, type BoardSummary } from "./api";
-  import BoardSelect from "./BoardSelect.svelte";
-  import LogPanel    from "./LogPanel.svelte";
-  import GpioGrid    from "./GpioGrid.svelte";
+  import {
+    buildAndRun,
+    stop,
+    screenshot,
+    defaultRunOptions,
+    type BoardSummary,
+    type RunOptions,
+  } from "./api";
+  import BoardSelect  from "./BoardSelect.svelte";
+  import LogPanel     from "./LogPanel.svelte";
+  import GpioGrid     from "./GpioGrid.svelte";
+  import RunSettings  from "./RunSettings.svelte";
 
   let { project, boards, buildLines, serialLines, gpioLines }:
     {
@@ -17,6 +25,7 @@
   let running       = $state(false);
   let lastError: string | null = $state(null);
   let lastScreenshot: string | null = $state(null);
+  let runOptions: RunOptions = $state(defaultRunOptions());
 
   $effect(() => {
     if (!selectedBoard && boards.length > 0) selectedBoard = boards[0].name;
@@ -27,7 +36,7 @@
     lastError = null;
     running   = true;
     try {
-      await buildAndRun(project, selectedBoard);
+      await buildAndRun(project, selectedBoard, runOptions);
     } catch (e) {
       lastError = String(e);
       running   = false;
@@ -68,6 +77,8 @@
         </button>
       </div>
     </div>
+
+    <RunSettings bind:options={runOptions} />
 
     {#if lastError}
       <div class="error">Error: {lastError}</div>

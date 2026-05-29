@@ -79,7 +79,7 @@ pub async fn list_boards() -> Result<Vec<BoardSummary>, String> {
     Ok(parse_list_boards_output(&String::from_utf8_lossy(&out.stdout)))
 }
 
-use crate::runner;
+use crate::runner::{self, RunOptions};
 use tauri::AppHandle;
 
 #[tauri::command]
@@ -88,6 +88,7 @@ pub async fn build_and_run(
     state:   State<'_, AppState>,
     project: PathBuf,
     board:   String,
+    options: Option<RunOptions>,
 ) -> Result<(), String> {
     // Kill any previous sketch first.
     {
@@ -97,7 +98,12 @@ pub async fn build_and_run(
         }
     }
 
-    let child = runner::spawn(app.clone(), project.clone(), board.clone())
+    let child = runner::spawn(
+        app.clone(),
+        project.clone(),
+        board.clone(),
+        options.unwrap_or_default(),
+    )
         .await
         .map_err(|e| e.to_string())?;
 

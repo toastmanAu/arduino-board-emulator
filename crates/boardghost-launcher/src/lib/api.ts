@@ -25,8 +25,26 @@ export async function listBoards(): Promise<BoardSummary[]> {
   return invoke<BoardSummary[]>("list_boards");
 }
 
-export async function buildAndRun(project: string, board: string): Promise<void> {
-  await invoke("build_and_run", { project, board });
+export interface RunOptions {
+  net_mode: "" | "fake" | "fail" | "real";
+  auto_touch_cal: boolean;
+  sim_touches_screen: string;
+  screenshot_delay_ms: number;
+}
+
+export const defaultRunOptions = (): RunOptions => ({
+  net_mode: "",
+  auto_touch_cal: false,
+  sim_touches_screen: "",
+  screenshot_delay_ms: 0,
+});
+
+export async function buildAndRun(
+  project: string,
+  board: string,
+  options: RunOptions
+): Promise<void> {
+  await invoke("build_and_run", { project, board, options });
 }
 
 export async function stop(): Promise<void> {
