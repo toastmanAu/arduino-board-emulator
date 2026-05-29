@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <SDL.h>
 #include <LovyanGFX.hpp>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -153,7 +154,21 @@ uint32_t micros(void) {
 }
 
 void delay(uint32_t ms) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    // Pump SDL events during delays so long setup() phases (e.g. JPG decode
+    // + render, touch calibration) keep the SDL renderer alive. Without this,
+    // sketches that call delay() in setup before reaching the main loop can
+    // wedge Panel_sdl waiting for an event drain that never happens.
+    using clock = std::chrono::steady_clock;
+    auto deadline = clock::now() + std::chrono::milliseconds(ms);
+    while (true) {
+        sim_pump_events();
+        auto now = clock::now();
+        if (now >= deadline) break;
+        auto remaining = deadline - now;
+        auto step = std::min<std::chrono::nanoseconds>(
+            remaining, std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(step);
+    }
 }
 
 void delayMicroseconds(uint32_t us) {
