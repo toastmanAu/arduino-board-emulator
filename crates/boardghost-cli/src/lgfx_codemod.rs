@@ -138,6 +138,22 @@ pub fn parse_setup(contents: &str) -> Option<ParsedSetup> {
     })
 }
 
+const SIM_TEMPLATE: &str = include_str!("../templates/lgfx_sim.hpp.tera");
+
+/// Render the parsed setup into a sim-side wrapper source string.
+pub fn generate_sim_wrapper(parsed: &ParsedSetup) -> anyhow::Result<String> {
+    use tera::{Context, Tera};
+    let mut tera = Tera::default();
+    tera.add_raw_template("lgfx_sim", SIM_TEMPLATE)?;
+    let mut ctx = Context::new();
+    ctx.insert("class_name",      &parsed.class_name);
+    ctx.insert("panel_width",     &parsed.panel_width);
+    ctx.insert("panel_height",    &parsed.panel_height);
+    ctx.insert("offset_rotation", &parsed.offset_rotation);
+    ctx.insert("has_touch",       &parsed.touch_class.is_some());
+    Ok(tera.render("lgfx_sim", &ctx)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,5 +249,41 @@ mod tests {
             "class X : public lgfx::LGFX_Device { lgfx::Panel_Foo p; };",
         );
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn generates_wrapper_with_dimensions() {
+        let parsed = ParsedSetup {
+            class_name: "LGFX".into(),
+            panel_class: "Panel_ILI9488".into(),
+            touch_class: Some("Touch_XPT2046".into()),
+            panel_width: 320,
+            panel_height: 480,
+            offset_rotation: 2,
+        };
+        let out = generate_sim_wrapper(&parsed).unwrap();
+        assert!(out.contains("class LGFX : public lgfx::LGFX_Device"));
+        assert!(out.contains("cfg.panel_width     = 320;"));
+        assert!(out.contains("cfg.panel_height    = 480;"));
+        assert!(out.contains("cfg.offset_rotation = 2;"));
+        assert!(out.contains("lgfx::Panel_sdl _panel_instance;"));
+        assert!(out.contains("Touch_sdl       _touch_instance;"));
+        assert!(out.contains("_panel_instance.setTouch(&_touch_instance);"));
+    }
+
+    #[test]
+    fn generates_wrapper_without_touch() {
+        let parsed = ParsedSetup {
+            class_name: "MyLGFX".into(),
+            panel_class: "Panel_ST7789".into(),
+            touch_class: None,
+            panel_width: 240,
+            panel_height: 320,
+            offset_rotation: 0,
+        };
+        let out = generate_sim_wrapper(&parsed).unwrap();
+        assert!(out.contains("class MyLGFX : public lgfx::LGFX_Device"));
+        assert!(!out.contains("Touch_sdl"));
+        assert!(!out.contains("setTouch"));
     }
 }
