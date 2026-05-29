@@ -1,6 +1,7 @@
 pub mod arduino_libs;
 pub mod lgfx_codemod;
 pub mod include_scan;
+pub mod sketch_mirror;
 pub mod lib_resolve;
 pub mod library_overrides;
 pub mod board;
