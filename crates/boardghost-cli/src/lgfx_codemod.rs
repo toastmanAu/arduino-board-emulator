@@ -154,6 +154,41 @@ pub fn generate_sim_wrapper(parsed: &ParsedSetup) -> anyhow::Result<String> {
     Ok(tera.render("lgfx_sim", &ctx)?)
 }
 
+/// Report describing what the codemod did. Returned to the build pipeline so
+/// stage logs can show the user what was rewritten.
+#[derive(Debug, Clone)]
+pub struct CodemodReport {
+    /// Relative path (under sketch dir) of the file that got rewritten.
+    pub rewritten_rel_path: std::path::PathBuf,
+    /// Parsed setup details, surfaced for diagnostics.
+    pub parsed: ParsedSetup,
+    /// The full sim-side source written into the mirror.
+    pub sim_contents: String,
+}
+
+/// Try to apply the LGFX codemod to a sketch dir. Returns `Ok(None)` when no
+/// hardware setup file is found OR when the parser can't extract enough info
+/// to safely generate a sim wrapper. Returns `Err` only on filesystem errors.
+pub fn try_apply(sketch_dir: &Path) -> anyhow::Result<Option<CodemodReport>> {
+    let Some(setup) = scan_sketch(sketch_dir)? else {
+        return Ok(None);
+    };
+    let Some(parsed) = parse_setup(&setup.contents) else {
+        eprintln!(
+            "→ LGFX codemod: setup detected at {:?} but couldn't parse — skipping",
+            setup.path
+        );
+        return Ok(None);
+    };
+    let sim_contents = generate_sim_wrapper(&parsed)?;
+    let rel_path = setup.path.strip_prefix(sketch_dir)?.to_path_buf();
+    Ok(Some(CodemodReport {
+        rewritten_rel_path: rel_path,
+        parsed,
+        sim_contents,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
