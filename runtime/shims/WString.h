@@ -11,10 +11,12 @@ public:
     String() = default;
     String(const char* s) : s_(s ? s : "") {}
     String(const std::string& s) : s_(s) {}
-    String(int n)            { char b[32]; std::snprintf(b, sizeof(b), "%d",  n); s_ = b; }
-    String(unsigned int n)   { char b[32]; std::snprintf(b, sizeof(b), "%u",  n); s_ = b; }
-    String(long n)           { char b[32]; std::snprintf(b, sizeof(b), "%ld", n); s_ = b; }
-    String(unsigned long n)  { char b[32]; std::snprintf(b, sizeof(b), "%lu", n); s_ = b; }
+    String(int n)                  { char b[32]; std::snprintf(b, sizeof(b), "%d",   n); s_ = b; }
+    String(unsigned int n)         { char b[32]; std::snprintf(b, sizeof(b), "%u",   n); s_ = b; }
+    String(long n)                 { char b[32]; std::snprintf(b, sizeof(b), "%ld",  n); s_ = b; }
+    String(unsigned long n)        { char b[32]; std::snprintf(b, sizeof(b), "%lu",  n); s_ = b; }
+    String(long long n)            { char b[32]; std::snprintf(b, sizeof(b), "%lld", n); s_ = b; }
+    String(unsigned long long n)   { char b[32]; std::snprintf(b, sizeof(b), "%llu", n); s_ = b; }
     String(double v, int decimals = 2) {
         char b[64]; std::snprintf(b, sizeof(b), "%.*f", decimals, v); s_ = b;
     }
@@ -29,6 +31,16 @@ public:
 
     String& operator+=(const String& o) { s_ += o.s_; return *this; }
     String  operator+ (const String& o) const { String r(*this); r += o; return r; }
+
+    // Explicit numeric/char* overloads. Without these, `myString + 42` is
+    // ambiguous between String::operator+(const String&) (via String(int) ctor)
+    // and pointer arithmetic on const char* (via the implicit conversion).
+    String operator+(const char* rhs) const { return *this + String(rhs); }
+    String operator+(int n)           const { return *this + String(n); }
+    String operator+(unsigned n)      const { return *this + String(n); }
+    String operator+(long n)          const { return *this + String(n); }
+    String operator+(unsigned long n) const { return *this + String(n); }
+    String operator+(double n)        const { return *this + String(n); }
 
     bool operator==(const String& o) const { return s_ == o.s_; }
     bool operator!=(const String& o) const { return s_ != o.s_; }

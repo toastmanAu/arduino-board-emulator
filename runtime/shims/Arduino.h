@@ -12,6 +12,30 @@
 #include "WString.h"
 #endif
 
+// ESP32 Arduino core implicitly pulls in heap_caps + FreeRTOS task/types.
+// Sketches reach for heap_caps_malloc / TaskHandle_t / etc. without an
+// explicit #include — match that convention.
+#include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+// configTime / getLocalTime — NTP/timezone helpers from the ESP32 Arduino
+// core. On host we honour gmtOffset by setting TZ, ignore the NTP server,
+// and let `time()` / `localtime_r()` answer with system time. Forward decl
+// only; impl lives in sim_runtime.cpp.
+#include <time.h>
+void configTime(long gmtOffset_sec, int daylightOffset_sec,
+                const char* server1,
+                const char* server2 = nullptr,
+                const char* server3 = nullptr);
+bool getLocalTime(struct tm* info, uint32_t ms = 5000);
+#ifdef __cplusplus
+}
+#endif
+
 // AVR / ESP flash-memory annotations — no-ops on the host. Arduino libraries
 // (Time, ArduinoJson, many others) sprinkle these on string tables.
 //

@@ -75,3 +75,34 @@ void EEPROMClass::writeInt(int addr, int value) {
     if (!data_ || addr < 0 || (size_t)(addr + sizeof(int)) > size_) return;
     std::memcpy(data_ + addr, &value, sizeof(int));
 }
+
+// readString / writeString — ESP32 Arduino's null-terminated convention:
+// bytes are written verbatim until a '\0' or the end of EEPROM. readString
+// stops at the first '\0'.
+String EEPROMClass::readString(int addr) {
+    if (!data_ || addr < 0 || (size_t)addr >= size_) return String();
+    char buf[256];
+    size_t n = 0;
+    while ((size_t)(addr + n) < size_ && n < sizeof(buf) - 1) {
+        uint8_t c = data_[addr + n];
+        if (c == 0) break;
+        buf[n++] = static_cast<char>(c);
+    }
+    buf[n] = '\0';
+    return String(buf);
+}
+
+size_t EEPROMClass::writeString(int addr, const String& val) {
+    return writeString(addr, val.c_str());
+}
+
+size_t EEPROMClass::writeString(int addr, const char* val) {
+    if (!data_ || addr < 0 || (size_t)addr >= size_ || !val) return 0;
+    size_t i = 0;
+    while (val[i] && (size_t)(addr + i) < size_) {
+        data_[addr + i] = static_cast<uint8_t>(val[i]);
+        ++i;
+    }
+    if ((size_t)(addr + i) < size_) data_[addr + i] = 0;
+    return i;
+}

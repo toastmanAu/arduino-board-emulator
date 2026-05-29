@@ -45,6 +45,38 @@ typedef enum {
     WIFI_AUTH_MAX               = 9,
 } wifi_auth_mode_t;
 
+// WiFiEvent_t — subset of ESP32 Arduino core's `arduino_event_id_t` covering
+// the events sketches most commonly register against. Values mirror the real
+// enum to keep `case ARDUINO_EVENT_WIFI_STA_CONNECTED:` compile-compatible.
+typedef enum {
+    ARDUINO_EVENT_WIFI_READY = 0,
+    ARDUINO_EVENT_WIFI_SCAN_DONE,
+    ARDUINO_EVENT_WIFI_STA_START,
+    ARDUINO_EVENT_WIFI_STA_STOP,
+    ARDUINO_EVENT_WIFI_STA_CONNECTED,
+    ARDUINO_EVENT_WIFI_STA_DISCONNECTED,
+    ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE,
+    ARDUINO_EVENT_WIFI_STA_GOT_IP,
+    ARDUINO_EVENT_WIFI_STA_GOT_IP6,
+    ARDUINO_EVENT_WIFI_STA_LOST_IP,
+    ARDUINO_EVENT_MAX,
+} WiFiEvent_t;
+
+// WiFiEventInfo_t — opaque union mirroring ESP32's event-info payload.
+// We expose just the structurally-required fields. Sketches that read
+// specific fields (e.g. `info.wifi_sta_disconnected.reason`) get safe
+// defaults from value-initialisation in the simulator.
+typedef union {
+    struct { uint8_t  ssid[33];  uint8_t  ssid_len; uint8_t  bssid[6];  uint8_t  channel;  uint8_t  authmode; uint16_t aid; } wifi_sta_connected;
+    struct { uint8_t  ssid[33];  uint8_t  ssid_len; uint8_t  bssid[6];  uint8_t  reason;   int8_t   rssi; }                 wifi_sta_disconnected;
+    struct { uint32_t status;    uint8_t  number;   uint8_t  scan_id; }                                                      wifi_scan_done;
+    struct { uint32_t ip;        uint32_t netmask;  uint32_t gw; }                                                           got_ip;
+} WiFiEventInfo_t;
+
+using WiFiEventCb         = void(*)(WiFiEvent_t);
+using WiFiEventFullCb     = void(*)(WiFiEvent_t, WiFiEventInfo_t);
+using WiFiEventId_t       = uint32_t;
+
 class WiFiClass {
 public:
     wl_status_t  begin(const char* ssid = nullptr, const char* passphrase = nullptr);
@@ -73,6 +105,24 @@ public:
     String           SSID(uint8_t /*idx*/)            { return String(); }
     String           BSSIDstr(uint8_t /*idx*/)        { return String(); }
     void             scanDelete()                     {}
+
+    // Event-callback registration — accepts both the legacy (event-only) and
+    // full (event + info) signatures. Real hardware fires these on state
+    // transitions; in fake mode the sim never invokes them (no event loop).
+    // Stubs return a synthetic event id so sketches that store it for later
+    // `removeEvent()` calls still compile.
+    WiFiEventId_t    onEvent(WiFiEventCb     /*cb*/, WiFiEvent_t /*event*/ = ARDUINO_EVENT_MAX) { return 0; }
+    WiFiEventId_t    onEvent(WiFiEventFullCb /*cb*/, WiFiEvent_t /*event*/ = ARDUINO_EVENT_MAX) { return 0; }
+    void             removeEvent(WiFiEventId_t /*id*/) {}
+
+    // Configuration knobs — sketches set these but the simulator can't honor
+    // them meaningfully. Stubs preserve compile compatibility.
+    bool             config(IPAddress /*local*/, IPAddress /*gw*/, IPAddress /*subnet*/,
+                            IPAddress /*dns1*/ = IPAddress(), IPAddress /*dns2*/ = IPAddress()) { return true; }
+    bool             setAutoReconnect(bool /*enable*/)            { return true; }
+    bool             setAutoConnect(bool /*enable*/)              { return true; }
+    bool             persistent(bool /*on*/)                      { return true; }
+    bool             reconnect()                                   { return true; }
 };
 
 extern WiFiClass WiFi;

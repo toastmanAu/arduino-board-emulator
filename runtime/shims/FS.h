@@ -64,6 +64,10 @@ private:
 
 }  // namespace fs
 
+// Hoist `File` to global scope to match ESP32 Arduino's <FS.h> behavior —
+// sketches commonly write `File f = SPIFFS.open(...)` without qualifying.
+using File = fs::File;
+
 // File mode constants used by Arduino's SD / SPIFFS.
 #define FILE_READ   "r"
 #define FILE_WRITE  "w"

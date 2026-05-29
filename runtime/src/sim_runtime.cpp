@@ -193,4 +193,27 @@ void sim_set_active_display(void* lgfx_device) {
     std::fprintf(stderr, "[boardghost] sim_set_active_display: device=%p\n", lgfx_device);
 }
 
+// M2.D — NTP/timezone shims. Sketches that call configTime() expect time(),
+// localtime_r() to thereafter report the configured local time. On host we
+// rely on the system clock; we set the TZ env var so localtime applies the
+// offset, but ignore the NTP server (we have no NTP daemon to talk to).
+void configTime(long gmtOffset_sec, int /*daylightOffset_sec*/,
+                const char* /*server1*/,
+                const char* /*server2*/,
+                const char* /*server3*/) {
+    char tz[64];
+    long hours   = -gmtOffset_sec / 3600;
+    long minutes = (-gmtOffset_sec % 3600) / 60;
+    std::snprintf(tz, sizeof(tz), "UTC%+ld:%02ld", hours, minutes);
+    setenv("TZ", tz, 1);
+    tzset();
+}
+
+bool getLocalTime(struct tm* info, uint32_t /*ms*/) {
+    if (!info) return false;
+    time_t now = time(nullptr);
+    localtime_r(&now, info);
+    return true;
+}
+
 } // extern "C"
