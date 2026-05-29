@@ -66,6 +66,78 @@ fn is_lgfx_setup(contents: &str) -> bool {
     has_device && has_hw_class
 }
 
+/// Information extracted from the user's LGFX setup file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedSetup {
+    /// The class name extending `lgfx::LGFX_Device` (e.g. `LGFX`, `MyLGFX`).
+    pub class_name: String,
+    /// The LovyanGFX panel class (e.g. `Panel_ILI9488`, `Panel_ST7789`).
+    pub panel_class: String,
+    /// The touch class, if any (e.g. `Touch_XPT2046`).
+    pub touch_class: Option<String>,
+    /// Panel width in pixels (from `cfg.panel_width = N;`).
+    pub panel_width: u32,
+    /// Panel height in pixels.
+    pub panel_height: u32,
+    /// Rotation offset (0..7). Defaults to 0 when not present in the source.
+    pub offset_rotation: u8,
+}
+
+/// Parse the contents of an LGFX setup file. Returns `Ok(None)` when any of
+/// the required fields can't be extracted — the caller must skip the codemod
+/// in that case and let the original file be used.
+pub fn parse_setup(contents: &str) -> Option<ParsedSetup> {
+    use regex::Regex;
+
+    // 1. Class name: matches `class Foo : public lgfx::LGFX_Device`
+    let class_re = Regex::new(r"class\s+(\w+)\s*:\s*public\s+lgfx::LGFX_Device").ok()?;
+    let class_name = class_re.captures(contents)?.get(1)?.as_str().to_string();
+
+    // 2. Panel class: matches `lgfx::Panel_Xxx _member`
+    let panel_re = Regex::new(r"lgfx::Panel_(\w+)\s+\w+").ok()?;
+    let panel_class = format!("Panel_{}", panel_re.captures(contents)?.get(1)?.as_str());
+
+    // 3. Touch class (optional): matches `lgfx::Touch_Xxx _member`
+    let touch_re = Regex::new(r"lgfx::Touch_(\w+)\s+\w+").ok()?;
+    let touch_class = touch_re
+        .captures(contents)
+        .and_then(|c| c.get(1))
+        .map(|m| format!("Touch_{}", m.as_str()));
+
+    // 4. Dimensions: `cfg.panel_width = N;` and `cfg.panel_height = N;`
+    let width_re = Regex::new(r"cfg\.panel_width\s*=\s*(\d+)").ok()?;
+    let height_re = Regex::new(r"cfg\.panel_height\s*=\s*(\d+)").ok()?;
+    let panel_width: u32 = width_re
+        .captures(contents)?
+        .get(1)?
+        .as_str()
+        .parse()
+        .ok()?;
+    let panel_height: u32 = height_re
+        .captures(contents)?
+        .get(1)?
+        .as_str()
+        .parse()
+        .ok()?;
+
+    // 5. Rotation (optional, default 0): `cfg.offset_rotation = N;`
+    let rot_re = Regex::new(r"cfg\.offset_rotation\s*=\s*(\d+)").ok()?;
+    let offset_rotation: u8 = rot_re
+        .captures(contents)
+        .and_then(|c| c.get(1))
+        .and_then(|m| m.as_str().parse().ok())
+        .unwrap_or(0);
+
+    Some(ParsedSetup {
+        class_name,
+        panel_class,
+        touch_class,
+        panel_width,
+        panel_height,
+        offset_rotation,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +194,44 @@ mod tests {
         fs::write(dir.path().join("utils.h"), "int add(int a, int b);").unwrap();
         fs::write(dir.path().join("config.h"), "#define WIFI_SSID \"x\"").unwrap();
         let result = scan_sketch(dir.path()).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parses_ili9488_fixture() {
+        let contents = include_str!("../tests/fixtures/lvgfx_setup_ili9488.h");
+        let parsed = parse_setup(contents).unwrap();
+        assert_eq!(parsed.class_name, "LGFX");
+        assert_eq!(parsed.panel_class, "Panel_ILI9488");
+        assert_eq!(parsed.touch_class.as_deref(), Some("Touch_XPT2046"));
+        assert_eq!(parsed.panel_width, 320);
+        assert_eq!(parsed.panel_height, 480);
+        assert_eq!(parsed.offset_rotation, 2);
+    }
+
+    #[test]
+    fn parses_st7789_fixture_no_touch_no_rotation() {
+        let contents = include_str!("../tests/fixtures/lvgfx_setup_st7789.h");
+        let parsed = parse_setup(contents).unwrap();
+        assert_eq!(parsed.class_name, "MyLGFX");
+        assert_eq!(parsed.panel_class, "Panel_ST7789");
+        assert!(parsed.touch_class.is_none());
+        assert_eq!(parsed.panel_width, 240);
+        assert_eq!(parsed.panel_height, 320);
+        assert_eq!(parsed.offset_rotation, 0);
+    }
+
+    #[test]
+    fn returns_none_when_class_missing() {
+        let result = parse_setup("// no class here");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn returns_none_when_dimensions_missing() {
+        let result = parse_setup(
+            "class X : public lgfx::LGFX_Device { lgfx::Panel_Foo p; };",
+        );
         assert!(result.is_none());
     }
 }
