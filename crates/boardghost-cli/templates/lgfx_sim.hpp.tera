@@ -6,6 +6,11 @@
 {% if has_touch %}#include "Touch_sdl.hpp"
 {% endif %}
 
+// Preserved #define directives from the user's setup file. Sketches reference
+// these constants (e.g. pin numbers) outside the LGFX class.
+{% for d in defines %}{{ d }}
+{% endfor %}
+
 class {{ class_name }} : public lgfx::LGFX_Device
 {
 public:

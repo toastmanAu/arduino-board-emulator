@@ -45,7 +45,15 @@ pub fn run_build(
             report.parsed.panel_height,
             report.parsed.offset_rotation,
         );
-        let mirror_dir = out_root.join("sketch_src");
+        // arduino-cli requires the sketch's main .ino file to share its name
+        // with the parent dir, so name the mirror after the original sketch
+        // dir (e.g. `cryptoTickerv3/`), nested under a `sketch_src/` namespace
+        // to keep the build cache tidy.
+        let original_dir_name = original_sketch_dir.file_name()
+            .ok_or_else(|| anyhow::anyhow!(
+                "sketch dir has no name: {:?}", original_sketch_dir
+            ))?;
+        let mirror_dir = out_root.join("sketch_src").join(original_dir_name);
         sketch_mirror::mirror(
             &original_sketch_dir,
             &mirror_dir,

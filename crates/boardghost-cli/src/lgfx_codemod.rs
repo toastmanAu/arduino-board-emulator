@@ -81,6 +81,10 @@ pub struct ParsedSetup {
     pub panel_height: u32,
     /// Rotation offset (0..7). Defaults to 0 when not present in the source.
     pub offset_rotation: u8,
+    /// Verbatim `#define NAME VALUE` lines from the user's file. Preserved
+    /// in the sim wrapper because sketches commonly reference these pin
+    /// constants (e.g. `pinMode(LCD_BL, OUTPUT)`) outside the LGFX class.
+    pub defines: Vec<String>,
 }
 
 /// Parse the contents of an LGFX setup file. Returns `Ok(None)` when any of
@@ -128,6 +132,15 @@ pub fn parse_setup(contents: &str) -> Option<ParsedSetup> {
         .and_then(|m| m.as_str().parse().ok())
         .unwrap_or(0);
 
+    // 6. Preserve `#define NAME VALUE` lines verbatim. Sketches reference
+    // pin constants like LCD_BL outside the LGFX class.
+    let defines: Vec<String> = contents
+        .lines()
+        .map(str::trim_start)
+        .filter(|l| l.starts_with("#define"))
+        .map(|l| l.to_string())
+        .collect();
+
     Some(ParsedSetup {
         class_name,
         panel_class,
@@ -135,6 +148,7 @@ pub fn parse_setup(contents: &str) -> Option<ParsedSetup> {
         panel_width,
         panel_height,
         offset_rotation,
+        defines,
     })
 }
 
@@ -151,6 +165,7 @@ pub fn generate_sim_wrapper(parsed: &ParsedSetup) -> anyhow::Result<String> {
     ctx.insert("panel_height",    &parsed.panel_height);
     ctx.insert("offset_rotation", &parsed.offset_rotation);
     ctx.insert("has_touch",       &parsed.touch_class.is_some());
+    ctx.insert("defines",         &parsed.defines);
     Ok(tera.render("lgfx_sim", &ctx)?)
 }
 
@@ -273,6 +288,14 @@ mod tests {
     }
 
     #[test]
+    fn extracts_define_directives() {
+        let src = "#define LCD_BL 5\n#define LCD_MOSI 11\nclass LGFX : public lgfx::LGFX_Device { lgfx::Panel_X p; };\ncfg.panel_width = 100;\ncfg.panel_height = 200;";
+        let parsed = parse_setup(src).unwrap();
+        assert_eq!(parsed.defines,
+            vec!["#define LCD_BL 5".to_string(), "#define LCD_MOSI 11".to_string()]);
+    }
+
+    #[test]
     fn returns_none_when_class_missing() {
         let result = parse_setup("// no class here");
         assert!(result.is_none());
@@ -295,6 +318,7 @@ mod tests {
             panel_width: 320,
             panel_height: 480,
             offset_rotation: 2,
+            defines: vec!["#define LCD_BL 5".into()],
         };
         let out = generate_sim_wrapper(&parsed).unwrap();
         assert!(out.contains("class LGFX : public lgfx::LGFX_Device"));
@@ -304,6 +328,7 @@ mod tests {
         assert!(out.contains("lgfx::Panel_sdl _panel_instance;"));
         assert!(out.contains("Touch_sdl       _touch_instance;"));
         assert!(out.contains("_panel_instance.setTouch(&_touch_instance);"));
+        assert!(out.contains("#define LCD_BL 5"));
     }
 
     #[test]
@@ -315,6 +340,7 @@ mod tests {
             panel_width: 240,
             panel_height: 320,
             offset_rotation: 0,
+            defines: vec![],
         };
         let out = generate_sim_wrapper(&parsed).unwrap();
         assert!(out.contains("class MyLGFX : public lgfx::LGFX_Device"));
