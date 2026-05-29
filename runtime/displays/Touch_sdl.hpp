@@ -53,16 +53,21 @@ public:
         if (count == 0 || tp == nullptr) return 0;
 
         if (auto_cal_) {
-            // LGFX calibrateTouch polls getTouchRaw at ~10ms intervals. We
-            // alternate between "no touch" and "touch at corner N" frames so
-            // the calibration state machine sees a clean press/release per
-            // corner. 8-state cycle: 4 (corner, none) pairs.
+            // LGFX's calibrate_touch needs, per corner: many consecutive
+            // "press at this corner" reads (8 iterations × 2 reads each,
+            // both within 20px) then a "release" read before advancing.
+            // Cycle: PRESS_READS reads pressed + RELEASE_READS reads
+            // released, per corner, 4 corners total.
+            constexpr int PRESS_READS   = 32;  // covers 8 iter × 2 reads + slop
+            constexpr int RELEASE_READS = 4;
+            constexpr int CYCLE = PRESS_READS + RELEASE_READS;
             const int16_t xs[4] = {           0, (int16_t)_cfg.x_max,
                                     (int16_t)_cfg.x_max,           0 };
             const int16_t ys[4] = {           0,           0,
                                     (int16_t)_cfg.y_max, (int16_t)_cfg.y_max };
-            int corner = (auto_cal_phase_ / 2) % 4;
-            bool press = (auto_cal_phase_ % 2) == 1;
+            int corner = (auto_cal_phase_ / CYCLE) % 4;
+            int in_cycle = auto_cal_phase_ % CYCLE;
+            bool press = in_cycle < PRESS_READS;
             auto_cal_phase_++;
             if (!press) return 0;
             tp[0].x    = xs[corner];

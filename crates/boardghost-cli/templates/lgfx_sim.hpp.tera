@@ -3,6 +3,7 @@
 // matches the user's panel dimensions ({{ panel_width }}x{{ panel_height }}).
 #pragma once
 #include <LovyanGFX.hpp>
+#include "Panel_sdl_bg.hpp"
 {% if has_touch %}#include "Touch_sdl.hpp"
 {% endif %}
 
@@ -29,6 +30,6 @@ public:
     }
 
 private:
-    lgfx::Panel_sdl _panel_instance;
+    Panel_sdl_bg    _panel_instance;
     {% if has_touch %}Touch_sdl       _touch_instance;{% endif %}
 };

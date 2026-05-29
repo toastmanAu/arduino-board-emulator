@@ -325,7 +325,7 @@ mod tests {
         assert!(out.contains("cfg.panel_width     = 320;"));
         assert!(out.contains("cfg.panel_height    = 480;"));
         assert!(out.contains("cfg.offset_rotation = 2;"));
-        assert!(out.contains("lgfx::Panel_sdl _panel_instance;"));
+        assert!(out.contains("Panel_sdl_bg    _panel_instance;"));
         assert!(out.contains("Touch_sdl       _touch_instance;"));
         assert!(out.contains("_panel_instance.setTouch(&_touch_instance);"));
         assert!(out.contains("#define LCD_BL 5"));
