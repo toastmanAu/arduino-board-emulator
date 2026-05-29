@@ -16,7 +16,16 @@ namespace {
     std::atomic<void*>       g_active_display{nullptr};
     std::atomic<int>         g_screenshot_requested{0};
     std::atomic<int>         g_screenshot_done{0};  // set by watcher thread after taking screenshot
-    clock_type::time_point   g_start;
+    // Use Meyers' singleton for the start timestamp. Static init order
+    // across translation units is undefined, so a plain `g_start` here
+    // might still be default-constructed (epoch) when user-global code
+    // like `long LAST_TOUCH = millis();` runs. Function-local static
+    // guarantees initialisation on first access, no matter which TU's
+    // global ctors run first.
+    clock_type::time_point& g_start() {
+        static clock_type::time_point start = clock_type::now();
+        return start;
+    }
 
     struct PinState {
         uint8_t mode    = 0;   // INPUT
@@ -85,7 +94,9 @@ extern "C" {
 void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     g_should_quit.store(0);
     g_screenshot_done.store(0);
-    g_start = clock_type::now();
+    // Do NOT reset g_start here — it's initialised at static-init time so
+    // that millis() in user global constructors returns small values
+    // consistent with millis() in setup()/loop().
     for (auto& p : g_pins) p = PinState{};
     load_analog_env_overrides();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
@@ -146,13 +157,13 @@ void sim_log_gpio_pwm(uint8_t pin, int value) {
 }
 
 uint32_t millis(void) {
-    auto d = clock_type::now() - g_start;
+    auto d = clock_type::now() - g_start();
     return static_cast<uint32_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
 }
 
 uint32_t micros(void) {
-    auto d = clock_type::now() - g_start;
+    auto d = clock_type::now() - g_start();
     return static_cast<uint32_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(d).count());
 }
