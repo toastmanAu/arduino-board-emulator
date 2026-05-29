@@ -4,6 +4,7 @@
 #pragma once
 #include <LovyanGFX.hpp>
 #include "Panel_sdl_bg.hpp"
+#include "sim_runtime.h"  // for sim_set_active_display
 {% if has_touch %}#include "Touch_sdl.hpp"
 {% endif %}
 
@@ -27,6 +28,9 @@ public:
         _panel_instance.config(cfg);
         setPanel(&_panel_instance);
         {% if has_touch %}_panel_instance.setTouch(&_touch_instance);{% endif %}
+        // Auto-register with BoardGhost so the screenshot watcher can find
+        // this device without the sketch needing to call sim_set_active_display.
+        sim_set_active_display(this);
     }
 
 private:

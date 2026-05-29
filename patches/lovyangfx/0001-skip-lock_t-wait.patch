@@ -1,0 +1,25 @@
+diff --git a/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp b/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp
+index 13b5cc5..d217a6a 100644
+--- a/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp
++++ b/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp
+@@ -392,9 +392,17 @@ namespace lgfx
+     if (SDL_SemValue(_update_in_semaphore) < 2)
+     {
+       SDL_SemPost(_update_in_semaphore);
+-      if (!_in_step_exec) {
+-        SDL_SemWaitTimeout(_update_out_semaphore, 1);
+-      }
++      // BoardGhost: skip the OUT-semaphore wait. Stock LGFX uses it as a
++      // back-pressure signal toward Panel_sdl::main()'s render loop, but
++      // we run our own sim_main() and don't drive that loop per write.
++      // Without this patch each lock_t destructor times out 1ms waiting
++      // for nothing, which serialises per-pixel drawing in drawJpgFile /
++      // fillScreen to ~1ms/pixel (≈150s for a 320×480 panel). Trade-off:
++      // slightly less smooth rendering for sketches actually completing
++      // setup(). Captured at patches/lovyangfx/0001-skip-lock_t-wait.patch.
++      // if (!_in_step_exec) {
++      //   SDL_SemWaitTimeout(_update_out_semaphore, 1);
++      // }
+     }
+   };
+ 

@@ -57,6 +57,25 @@ endif()
 # LovyanGFX PC backend — compiled from source against SDL2.
 set(LGFX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/LovyanGFX)
 
+# Apply BoardGhost patches to the LovyanGFX submodule. Idempotent — we
+# detect the marker comment and skip if already applied. See patches/README.md.
+set(LGFX_PATCH_TARGET ${LGFX_DIR}/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp)
+set(LGFX_PATCH_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/../patches/lovyangfx/0001-skip-lock_t-wait.patch)
+file(READ ${LGFX_PATCH_TARGET} _lgfx_target_content)
+if(NOT _lgfx_target_content MATCHES "BoardGhost: skip the OUT-semaphore wait")
+    message(STATUS "BoardGhost: applying ${LGFX_PATCH_FILE} to LovyanGFX submodule")
+    execute_process(
+        COMMAND git apply --whitespace=nowarn ${LGFX_PATCH_FILE}
+        WORKING_DIRECTORY ${LGFX_DIR}
+        RESULT_VARIABLE _lgfx_patch_rc
+        OUTPUT_VARIABLE _lgfx_patch_out
+        ERROR_VARIABLE  _lgfx_patch_err
+    )
+    if(NOT _lgfx_patch_rc EQUAL 0)
+        message(FATAL_ERROR "BoardGhost: failed to apply LovyanGFX patch: ${_lgfx_patch_err}")
+    endif()
+endif()
+
 # Direct cpp files in v1/
 file(GLOB LGFX_V1_DIRECT CONFIGURE_DEPENDS
     ${LGFX_DIR}/src/lgfx/v1/*.cpp

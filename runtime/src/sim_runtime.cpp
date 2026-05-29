@@ -41,14 +41,6 @@ namespace {
     // that don't use Panel_sdl::main (we use our own sim_main) still need its
     // OUT semaphore to be posted so per-pixel writes in drawJpgFile etc. don't
     // each wait 1ms for nothing (153K pixels × 1ms ≈ 150s of pointless sleep).
-    void render_thread() {
-        while (!g_should_quit.load()) {
-            lgfx::Panel_sdl::loop();
-            // Panel_sdl::loop has its own internal SDL_SemWaitTimeout so
-            // this loop self-throttles to ~1ms granularity. No sleep needed.
-        }
-    }
-
     void screenshot_watcher_thread() {
         while (!g_should_quit.load()) {
             if (g_screenshot_requested.exchange(0) == 1) {
@@ -105,9 +97,6 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     // This runs independently of the sketch so screenshots fire even when the
     // main thread is blocked in drawing calls (e.g. calibrateTouch).
     std::thread(screenshot_watcher_thread).detach();
-    // Background Panel_sdl render thread — lets sketches do heavy drawing
-    // in setup() without each per-pixel lock_t waiting 1ms for nothing.
-    std::thread(render_thread).detach();
 }
 
 void sim_runtime_shutdown(void) {

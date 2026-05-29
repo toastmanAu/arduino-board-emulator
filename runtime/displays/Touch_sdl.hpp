@@ -57,10 +57,18 @@ public:
             // "press at this corner" reads (8 iterations × 2 reads each,
             // both within 20px) then a "release" read before advancing.
             // Cycle: PRESS_READS reads pressed + RELEASE_READS reads
-            // released, per corner, 4 corners total.
-            constexpr int PRESS_READS   = 32;  // covers 8 iter × 2 reads + slop
+            // released, per corner, 4 corners total. After all 4 corners
+            // finish we self-disable so the main loop sees normal "no touch"
+            // behavior (otherwise the sketch would interpret every loop
+            // iteration as a corner tap).
+            constexpr int PRESS_READS   = 32;
             constexpr int RELEASE_READS = 4;
             constexpr int CYCLE = PRESS_READS + RELEASE_READS;
+            constexpr int TOTAL_PHASES = 4 * CYCLE;
+            if (auto_cal_phase_ >= TOTAL_PHASES) {
+                auto_cal_ = false;
+                return 0;
+            }
             const int16_t xs[4] = {           0, (int16_t)_cfg.x_max,
                                     (int16_t)_cfg.x_max,           0 };
             const int16_t ys[4] = {           0,           0,
