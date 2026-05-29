@@ -35,9 +35,16 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
     if let Some(screenshot_path) = screenshot {
         let pid = child.id();
         let screenshot_path = screenshot_path.to_path_buf();
+        // Allow overriding the settle delay before screenshot via env var
+        // (default 2000ms). Sketches with heavy setup() — JPG decode, touch
+        // calibration, network connect — need more time to reach the visible
+        // frame.
+        let settle_ms: u64 = std::env::var("BOARDGHOST_SCREENSHOT_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2000);
         let screenshot_thread = std::thread::spawn(move || {
-            // Wait for sketch to initialise.
-            std::thread::sleep(std::time::Duration::from_millis(2000));
+            std::thread::sleep(std::time::Duration::from_millis(settle_ms));
             // Trigger screenshot.
             #[cfg(unix)]
             unsafe { libc::kill(pid as i32, libc::SIGUSR1); }
