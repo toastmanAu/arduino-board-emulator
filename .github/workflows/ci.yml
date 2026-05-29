@@ -54,6 +54,10 @@ jobs:
         run: ./tests/e2e/cryptoticker_smoke.sh
         env:
           BOARDGHOST_NET: fake
+      - name: E2E — lgfx_codemod_smoke (M2.E)
+        run: ./tests/e2e/lgfx_codemod_smoke.sh
+        env:
+          BOARDGHOST_NET: fake
 
   launcher-build:
     runs-on: ubuntu-latest

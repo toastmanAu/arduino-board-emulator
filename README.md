@@ -100,3 +100,44 @@ Existing overrides:
 - `ArduinoWebsockets` — uses BoardGhost's header-only shim
   (`runtime/shims/ArduinoWebsockets.h`); real WebSocket support is future
   work but the shim compiles cleanly.
+
+## Using sketches with hardware LGFX setups (M2.E)
+
+If your sketch ships its own `lvgfx_setup.h` (or similar header) that declares
+a `class LGFX : public lgfx::LGFX_Device` using hardware classes like
+`lgfx::Panel_ILI9488` + `lgfx::Bus_SPI` + `lgfx::Touch_XPT2046`, boardghost
+auto-detects it and rewrites the setup file at build time into a
+`lgfx::Panel_sdl`-backed version that matches your declared panel dimensions
+and rotation. All `#define` directives in your setup file (pin numbers, etc.)
+are preserved verbatim.
+
+Your original sketch on disk is **never modified**. The rewritten copy lives
+at `.boardghost/<board>/sketch_src/<sketch-name>/`.
+
+```bash
+# Just build — the codemod fires transparently.
+boardghost run --board st7789_esp32s3_sim my-cool-sketch/
+```
+
+You'll see a line like:
+
+```
+→ LGFX codemod: rewriting lvgfx_setup.h → Panel_sdl 320x480 (rotation 2)
+```
+
+### When the codemod skips
+
+It skips silently when:
+- The setup file already references an `LGFX_*_SDL.hpp` header (you've already
+  done the swap).
+- The regex parser can't extract panel dimensions (e.g. they come from a
+  `#define` instead of literal numbers in the config). Add the dims as
+  literals in your hardware setup, or open an issue with the source so the
+  parser can be extended.
+
+### Optional sim helpers
+
+If your sketch calls `lcd.calibrateTouch(...)`, set
+`BOARDGHOST_AUTO_TOUCH_CAL=1` in the environment so the sim's Touch_sdl
+cycles through screen corners automatically and the calibration completes
+without user input.
