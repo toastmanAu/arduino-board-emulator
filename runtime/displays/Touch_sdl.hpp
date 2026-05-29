@@ -1,5 +1,8 @@
 #pragma once
 #include <LovyanGFX.hpp>
+#include <cstdlib>
+#include <cstdint>
+#include <vector>
 
 // Pull in SDL the same way LovyanGFX's own sdl platform does: try SDL2 first,
 // then fall back to bare <SDL.h>. The entire class is gated on SDL_h_ so that
@@ -42,6 +45,28 @@ public:
         if (const char* v = std::getenv("BOARDGHOST_AUTO_TOUCH_CAL")) {
             auto_cal_ = (v[0] == '1' || v[0] == 't' || v[0] == 'T' || v[0] == 'y' || v[0] == 'Y');
         }
+        // Scripted touches for headless testing. Format:
+        //   BOARDGHOST_SIM_TOUCHES="t1ms:x,y;t2ms:x,y;..."
+        // Each entry fires a single ~80ms press at (x,y) starting at t_ms
+        // after process start. Example "2000:160,125;4000:160,200" taps two
+        // buttons in sequence.
+        if (const char* v = std::getenv("BOARDGHOST_SIM_TOUCHES")) {
+            const char* p = v;
+            while (*p) {
+                long t = std::strtol(p, (char**)&p, 10);
+                if (*p != ':') break;
+                ++p;
+                long x = std::strtol(p, (char**)&p, 10);
+                if (*p != ',') break;
+                ++p;
+                long y = std::strtol(p, (char**)&p, 10);
+                scripted_.push_back({(uint32_t)t, (int16_t)x, (int16_t)y});
+                if (*p == ';') ++p;
+                else break;
+            }
+        }
+        // start_ms_ initialised lazily in getTouchRaw (SDL_Init may not be
+        // called yet when static instance ctors run).
     }
 
     bool init(void) override { return true; }
@@ -51,6 +76,32 @@ public:
 
     uint_fast8_t getTouchRaw(lgfx::touch_point_t* tp, uint_fast8_t count) override {
         if (count == 0 || tp == nullptr) return 0;
+
+        // Scripted touch injection — only active after auto-calibration
+        // completes (otherwise the scripted taps interfere with the
+        // calibration state machine). A tap lasts ~80ms across consecutive
+        // getTouchRaw calls so LGFX's debounce sees a stable press.
+        if (!scripted_.empty() && !auto_cal_) {
+            // Lazy-init start_ms_ on first call — static ctors run before
+            // SDL_Init so SDL_GetTicks() in our ctor would return 0.
+            if (start_ms_ == 0) start_ms_ = SDL_GetTicks();
+            uint32_t now = SDL_GetTicks() - start_ms_;
+            // Advance past finished entries.
+            while (scripted_idx_ < scripted_.size()
+                   && now > scripted_[scripted_idx_].when_ms + 80) {
+                ++scripted_idx_;
+            }
+            if (scripted_idx_ < scripted_.size()) {
+                const auto& s = scripted_[scripted_idx_];
+                if (now >= s.when_ms && now <= s.when_ms + 80) {
+                    tp[0].x = s.x;
+                    tp[0].y = s.y;
+                    tp[0].size = 1;
+                    tp[0].id = 0;
+                    return 1;
+                }
+            }
+        }
 
         if (auto_cal_) {
             // LGFX's calibrate_touch needs, per corner: many consecutive
@@ -105,6 +156,10 @@ public:
 private:
     bool auto_cal_ = false;
     int  auto_cal_phase_ = 0;
+    struct ScriptedTap { uint32_t when_ms; int16_t x; int16_t y; };
+    std::vector<ScriptedTap> scripted_;
+    size_t   scripted_idx_ = 0;
+    uint32_t start_ms_     = 0;
 };
 
 #endif  // defined(SDL_h_)
