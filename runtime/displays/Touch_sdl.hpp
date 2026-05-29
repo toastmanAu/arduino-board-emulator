@@ -34,6 +34,14 @@ public:
         _cfg.y_max = 4095;
         _cfg.bus_shared = false;
         // pin assignments are irrelevant in sim; leave at defaults.
+
+        // Auto-calibration: sketches that call tft.calibrateTouch() block
+        // forever in headless sim mode (no taps come in). Setting
+        // BOARDGHOST_AUTO_TOUCH_CAL=1 makes getTouchRaw cycle through the
+        // 4 corners on successive calls so the calibration completes.
+        if (const char* v = std::getenv("BOARDGHOST_AUTO_TOUCH_CAL")) {
+            auto_cal_ = (v[0] == '1' || v[0] == 't' || v[0] == 'T' || v[0] == 'y' || v[0] == 'Y');
+        }
     }
 
     bool init(void) override { return true; }
@@ -43,6 +51,26 @@ public:
 
     uint_fast8_t getTouchRaw(lgfx::touch_point_t* tp, uint_fast8_t count) override {
         if (count == 0 || tp == nullptr) return 0;
+
+        if (auto_cal_) {
+            // LGFX calibrateTouch polls getTouchRaw at ~10ms intervals. We
+            // alternate between "no touch" and "touch at corner N" frames so
+            // the calibration state machine sees a clean press/release per
+            // corner. 8-state cycle: 4 (corner, none) pairs.
+            const int16_t xs[4] = {           0, (int16_t)_cfg.x_max,
+                                    (int16_t)_cfg.x_max,           0 };
+            const int16_t ys[4] = {           0,           0,
+                                    (int16_t)_cfg.y_max, (int16_t)_cfg.y_max };
+            int corner = (auto_cal_phase_ / 2) % 4;
+            bool press = (auto_cal_phase_ % 2) == 1;
+            auto_cal_phase_++;
+            if (!press) return 0;
+            tp[0].x    = xs[corner];
+            tp[0].y    = ys[corner];
+            tp[0].size = 1;
+            tp[0].id   = 0;
+            return 1;
+        }
 
         // Pump SDL events so SDL_GetMouseState reflects current state.
         SDL_PumpEvents();
@@ -60,6 +88,10 @@ public:
         tp[0].id   = 0;
         return 1;
     }
+
+private:
+    bool auto_cal_ = false;
+    int  auto_cal_phase_ = 0;
 };
 
 #endif  // defined(SDL_h_)

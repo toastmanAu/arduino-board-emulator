@@ -9,6 +9,17 @@ SerialClass Serial;
 SerialClass Serial1;  // Stub for modem/secondary UART (no-op in sim)
 SerialClass Serial2;  // Stub for tertiary UART (no-op in sim)
 
+// Force line buffering on stdout so Serial.println output appears immediately
+// when stdout is a pipe (e.g. when boardghost run captures output). Without
+// this, libc defaults to fully-buffered mode on non-TTY stdout and prints
+// only emerge on 4KB blocks or program exit — making hangs invisible to
+// callers tailing the log.
+namespace {
+struct StdoutLineBuffer {
+    StdoutLineBuffer() { std::setvbuf(stdout, nullptr, _IOLBF, 0); }
+} s_stdout_line_buffer;
+}  // namespace
+
 size_t SerialClass::print(const char* s)        { return std::fputs(s, stdout) >= 0 ? std::strlen(s) : 0; }
 size_t SerialClass::print(const String& s)      { return print(s.c_str()); }
 size_t SerialClass::print(int v)                { return std::printf("%d", v);  }

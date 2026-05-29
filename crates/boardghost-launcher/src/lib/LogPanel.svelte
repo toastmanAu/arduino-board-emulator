@@ -19,8 +19,8 @@
 </section>
 
 <style>
-  .log-panel { display: flex; flex-direction: column; min-height: 0; }
-  header { font-size: 0.75rem; font-weight: 600; padding: 0.4rem 0.5rem; background: #f3f3f3; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; }
-  .lines { flex: 1; overflow-y: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.78rem; padding: 0.4rem 0.5rem; background: #fafafa; min-height: 0; }
-  .lines > div { white-space: pre-wrap; }
+  .log-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  header { flex: 0 0 auto; font-size: 0.75rem; font-weight: 600; padding: 0.4rem 0.5rem; background: #f3f3f3; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; }
+  .lines { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.78rem; padding: 0.4rem 0.5rem; background: #fafafa; }
+  .lines > div { white-space: pre-wrap; word-break: break-all; }
 </style>
