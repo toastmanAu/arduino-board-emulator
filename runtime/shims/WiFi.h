@@ -31,6 +31,20 @@ private:
     uint8_t a_, b_, c_, d_;
 };
 
+// wifi_auth_mode_t — matches ESP32 Arduino core's WiFi authentication enum.
+typedef enum {
+    WIFI_AUTH_OPEN              = 0,
+    WIFI_AUTH_WEP               = 1,
+    WIFI_AUTH_WPA_PSK           = 2,
+    WIFI_AUTH_WPA2_PSK          = 3,
+    WIFI_AUTH_WPA_WPA2_PSK      = 4,
+    WIFI_AUTH_WPA2_ENTERPRISE   = 5,
+    WIFI_AUTH_WPA3_PSK          = 6,
+    WIFI_AUTH_WPA2_WPA3_PSK     = 7,
+    WIFI_AUTH_WAPI_PSK          = 8,
+    WIFI_AUTH_MAX               = 9,
+} wifi_auth_mode_t;
+
 class WiFiClass {
 public:
     wl_status_t  begin(const char* ssid = nullptr, const char* passphrase = nullptr);
@@ -47,6 +61,18 @@ public:
     void         mode(int /*m*/) {}
     void         setSleep(bool /*s*/) {}
     void         setHostname(const char* /*h*/) {}
+
+    // M2.D — scan API. Stub returns 0 (no networks seen) in all modes; per-index
+    // accessors return safe defaults. Sketches that iterate the scan results
+    // simply find zero entries and skip the loop.
+    int16_t          scanNetworks(bool /*async*/ = false, bool /*show_hidden*/ = false,
+                                  bool /*passive*/ = false, uint32_t /*max_ms_per_chan*/ = 300) { return 0; }
+    int              RSSI(uint8_t /*idx*/)            { return 0; }
+    int32_t          channel(uint8_t /*idx*/)         { return 0; }
+    wifi_auth_mode_t encryptionType(uint8_t /*idx*/)  { return WIFI_AUTH_OPEN; }
+    String           SSID(uint8_t /*idx*/)            { return String(); }
+    String           BSSIDstr(uint8_t /*idx*/)        { return String(); }
+    void             scanDelete()                     {}
 };
 
 extern WiFiClass WiFi;
