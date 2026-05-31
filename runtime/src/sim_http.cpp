@@ -197,3 +197,19 @@ int HTTPClient::PUT(const String& payload)           { BG_DO_REQ("PUT",    paylo
 int HTTPClient::DELETE()                             { BG_DO_REQ("DELETE", String("")); }
 
 String HTTPClient::getString() { return body_; }
+
+// After a successful request the body is buffered in body_ — the sketch's
+// "connected" check then drives a download loop. We report the connection as
+// "live" once (so the gate opens) and "closed" thereafter, so loops that copy
+// bytes via `getStreamPtr()` exit on the next iteration even though our stream
+// is empty.
+bool HTTPClient::connected() {
+    bool was = connected_;
+    connected_ = false;
+    return was;
+}
+
+WiFiClient* HTTPClient::getStreamPtr() {
+    connected_ = (last_code_ > 0 && last_code_ < 400);
+    return &stream_;
+}

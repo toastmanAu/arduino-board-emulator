@@ -16,6 +16,15 @@
 #define HTTPC_ERROR_STREAM_WRITE        (-10)
 #define HTTPC_ERROR_READ_TIMEOUT        (-11)
 
+// Follow-redirect policy — values mirror ESP32 Arduino core's
+// `followRedirects_t` enum. Sketches that pass HTTPC_STRICT_FOLLOW_REDIRECTS
+// to setFollowRedirects() compile against the same constant we expose here.
+typedef enum {
+    HTTPC_DISABLE_FOLLOW_REDIRECTS = 0,
+    HTTPC_STRICT_FOLLOW_REDIRECTS  = 1,
+    HTTPC_FORCE_FOLLOW_REDIRECTS   = 2,
+} followRedirects_t;
+
 // HTTP status code constants — Arduino code commonly checks against these.
 #define HTTP_CODE_OK                    200
 #define HTTP_CODE_CREATED               201
@@ -43,6 +52,24 @@ public:
     void   setUserAgent(const String& ua)         { user_agent_ = ua; }
     void   setAuthorization(const char* user, const char* pw);
     void   setReuse(bool /*reuse*/) {}
+
+    // Redirect / header-collection / connection introspection — added for
+    // OTA-style sketches that follow a download URL through a CDN and then
+    // stream the body into Update. The sim doesn't honour the redirect mode
+    // (libcurl does its own thing in real mode; fake mode never connects),
+    // but the API surface keeps the sketch compiling and the call no-ops
+    // semantically.
+    void   setFollowRedirects(followRedirects_t /*mode*/) {}
+    void   setRedirectLimit(uint16_t /*limit*/) {}
+    void   collectHeaders(const char* /*headerKeys*/[], size_t /*headerKeysCount*/) {}
+    bool   connected();
+    // getStreamPtr — real impl returns the underlying WiFiClient so the
+    // sketch can pump bytes itself via `stream->read(...)`. In the sim the
+    // returned client behaves as a 0-byte stream (read() == -1), so download
+    // loops gated on connected() && contentLength terminate cleanly without
+    // actually copying anything. Stored on the HTTPClient instance so the
+    // returned pointer outlives the call.
+    WiFiClient* getStreamPtr();
 
     int    GET();
     int    POST(const String& payload);
@@ -80,4 +107,6 @@ private:
     String  user_agent_;
     String  auth_header_;   // "Authorization: Basic <base64>" when set
     uint32_t timeout_ms_    = 30000;
+    WiFiClient stream_;     // returned by getStreamPtr(); empty/disconnected
+    bool    connected_      = false;
 };

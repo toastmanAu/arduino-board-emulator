@@ -102,6 +102,49 @@ void     delayMicroseconds(uint32_t us);
 #define OUTPUT       0x1
 #define INPUT_PULLUP 0x2
 
+// `byte` is an Arduino-core typedef — sketches use it interchangeably with
+// uint8_t. `std::byte` would shadow it under C++17 so we typedef explicitly.
+typedef uint8_t byte;
+
+// Print radix constants used by Serial.print(v, BASE). Values match the
+// Arduino core Print API.
+#define DEC 10
+#define HEX 16
+#define OCT 8
+#define BIN 2
+
+// Arduino ctype helpers — thin wrappers around <ctype.h> with the
+// PascalCase names Arduino sketches use (isDigit, isAlpha, etc.).
+#include <ctype.h>
+static inline int isAlpha(int c)        { return isalpha(c); }
+static inline int isAlphaNumeric(int c) { return isalnum(c); }
+static inline int isAscii(int c)        { return (c & ~0x7f) == 0; }
+static inline int isControl(int c)      { return iscntrl(c); }
+static inline int isDigit(int c)        { return isdigit(c); }
+static inline int isGraph(int c)        { return isgraph(c); }
+static inline int isHexadecimalDigit(int c) { return isxdigit(c); }
+static inline int isLowerCase(int c)    { return islower(c); }
+static inline int isPrintable(int c)    { return isprint(c); }
+static inline int isPunct(int c)        { return ispunct(c); }
+static inline int isSpace(int c)        { return isspace(c); }
+static inline int isUpperCase(int c)    { return isupper(c); }
+static inline int isWhitespace(int c)   { return c == ' ' || c == '\t'; }
+
+// esp_random — ESP32 hardware RNG. The sim uses rand() seeded by sim_main.
+uint32_t esp_random(void);
+
+// ESP32 LEDC PWM API — back the sim with no-ops. Sketches use these for
+// piezo buzzer pitches and backlight; the sim has no audio output and the
+// backlight is fixed-on, so calls are silent. Keeps tone-playing setup() code
+// from failing to compile.
+void  ledcSetup(uint8_t channel, double freq, uint8_t resolution_bits);
+void  ledcAttachPin(uint8_t pin, uint8_t channel);
+void  ledcDetachPin(uint8_t pin);
+void  ledcWrite(uint8_t channel, uint32_t duty);
+void  ledcWriteTone(uint8_t channel, double freq);
+void  ledcWriteNote(uint8_t channel, uint8_t note, uint8_t octave);
+uint32_t ledcRead(uint8_t channel);
+
 void pinMode(uint8_t pin, uint8_t mode);
 void digitalWrite(uint8_t pin, uint8_t value);
 int  digitalRead(uint8_t pin);
@@ -113,10 +156,25 @@ void analogWrite(uint8_t pin, int value);
 }
 #endif
 
+// UART config flags — ESP32 Arduino core constants. Values mirror the real
+// enum so equality comparisons in sketch code stay valid; the sim ignores them.
+#define SERIAL_5N1 0x8000010
+#define SERIAL_6N1 0x8000014
+#define SERIAL_7N1 0x8000018
+#define SERIAL_8N1 0x800001c
+#define SERIAL_5N2 0x8000030
+#define SERIAL_6N2 0x8000034
+#define SERIAL_7N2 0x8000038
+#define SERIAL_8N2 0x800003c
+
 #ifdef __cplusplus
 class SerialClass {
 public:
     void begin(unsigned long /*baud*/) {}
+    // ESP32 HardwareSerial overload: baud, config, rx, tx, [invert].
+    void begin(unsigned long /*baud*/, uint32_t /*config*/,
+               int8_t /*rxPin*/ = -1, int8_t /*txPin*/ = -1,
+               bool /*invert*/ = false, unsigned long /*timeout_ms*/ = 20000UL) {}
     void end() {}
 
     size_t print(const char* s);
@@ -127,6 +185,11 @@ public:
     size_t print(unsigned long v);
     size_t print(double v, int decimals = 2);
     size_t print(char c);
+    // Radix overloads — e.g. Serial.print(0xff, HEX) renders "ff".
+    size_t print(int v, int base);
+    size_t print(unsigned int v, int base);
+    size_t print(long v, int base);
+    size_t print(unsigned long v, int base);
 
     size_t println();
     size_t println(const char* s);
@@ -136,6 +199,10 @@ public:
     size_t println(long v);
     size_t println(unsigned long v);
     size_t println(double v, int decimals = 2);
+    size_t println(int v, int base);
+    size_t println(unsigned int v, int base);
+    size_t println(long v, int base);
+    size_t println(unsigned long v, int base);
 
     size_t printf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
     size_t write(uint8_t b);
@@ -144,11 +211,72 @@ public:
     int    available();
     int    read();
     void   flush();
+    void   setDebugOutput(bool /*enable*/) {}
 };
 
-extern SerialClass Serial;
-extern SerialClass Serial1;
-extern SerialClass Serial2;
+extern SerialClass    Serial;
+// Serial1/Serial2 stand in for the secondary UARTs; they're HardwareSerial-
+// typed so reads don't poll stdin (which would let any unrelated terminal
+// input pollute an external-peripheral protocol).
+class HardwareSerial;
+extern HardwareSerial Serial1;
+extern HardwareSerial Serial2;
+
+// Stream — Arduino's abstract base for byte-oriented IO (Serial, WiFiClient,
+// File, etc. all derive from it on real hardware). The shim version exposes
+// the read/write/available subset that Arduino library code reaches for, with
+// default no-op bodies. Concrete shims (WiFiClient, etc.) override what they
+// support. Update.writeStream(Stream&) and similar signatures take this type.
+class Stream {
+public:
+    virtual ~Stream() = default;
+    virtual int    available()                          { return 0; }
+    virtual int    read()                               { return -1; }
+    virtual int    read(uint8_t* /*buf*/, size_t /*n*/) { return 0; }
+    virtual int    peek()                               { return -1; }
+    virtual size_t write(uint8_t /*b*/)                 { return 0; }
+    virtual size_t write(const uint8_t* /*buf*/, size_t n) { return n; }
+    virtual void   flush()                              {}
+    virtual void   setTimeout(uint32_t /*ms*/)          {}
+};
+
+// ESP — chip-control singleton. Only restart() is reached by the sketches we
+// care about so far; the sim exits with a recognizable status so launchers
+// can distinguish a deliberate restart from a crash.
+class ESPClass {
+public:
+    [[noreturn]] void restart();  // implementation in sim_misc.cpp
+    uint32_t getFreeHeap() const         { return 200 * 1024; }
+    uint32_t getMinFreeHeap() const      { return 150 * 1024; }
+    uint32_t getMaxAllocHeap() const     { return 100 * 1024; }
+    uint32_t getHeapSize() const         { return 320 * 1024; }
+    uint32_t getCpuFreqMHz() const       { return 240; }
+    uint64_t getEfuseMac() const         { return 0x0123456789abULL; }
+    void     deepSleep(uint64_t /*us*/)  {}
+};
+
+extern ESPClass ESP;
+
+// ESP32 Arduino core's `HardwareSerial` exposes the same Stream API as
+// SerialClass plus a port-indexed constructor (`HardwareSerial(1)`, etc.).
+// Sketches commonly declare `HardwareSerial qr(1);` for an external UART
+// peripheral (QR scanner, thermal printer, GPS, modem). The sim has no
+// physical UART, so reads always report "no data" — preventing infinite
+// loops where the sketch polls a missing scanner forever. Writes go to the
+// sim log so the protocol bytes the sketch sends are visible.
+class HardwareSerial : public SerialClass {
+public:
+    explicit HardwareSerial(int uart_nr = 0) : uart_nr_(uart_nr) {}
+    int  port() const { return uart_nr_; }
+
+    // Reads — no peripheral, no data. Overrides the stdin-poll impl in
+    // SerialClass so external-UART consumers get a clean "empty buffer".
+    int  available()              { return 0; }
+    int  read()                   { return -1; }
+    int  peek()                   { return -1; }
+private:
+    int uart_nr_;
+};
 #endif
 
 #ifdef __cplusplus

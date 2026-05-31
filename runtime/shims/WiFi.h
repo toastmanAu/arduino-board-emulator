@@ -123,6 +123,11 @@ public:
     bool             setAutoConnect(bool /*enable*/)              { return true; }
     bool             persistent(bool /*on*/)                      { return true; }
     bool             reconnect()                                   { return true; }
+
+    // Blocking variant — returns the final status after up to timeout_ms.
+    // In sim's fake mode `begin()` already returns WL_CONNECTED so we just
+    // re-poll status() and hand it back; in fail mode it returns FAILED.
+    wl_status_t      waitForConnectResult(unsigned long /*timeout_ms*/ = 60000UL) { return status(); }
 };
 
 extern WiFiClass WiFi;

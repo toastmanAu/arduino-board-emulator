@@ -11,6 +11,9 @@ public:
 class SPIClass {
 public:
     void    begin();
+    // ESP32 overload — explicit SCK/MISO/MOSI/SS pins.
+    void    begin(int8_t /*sck*/, int8_t /*miso*/, int8_t /*mosi*/,
+                  int8_t /*ss*/ = -1) {}
     void    end();
     void    beginTransaction(SPISettings);
     void    endTransaction();

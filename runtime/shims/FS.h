@@ -1,8 +1,24 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <string>
 #include "WString.h"
 #include <cstdio>
+
+// Forward-decl SPIClass — fs::FS::begin(cs, spi, freq) takes one but we
+// don't actually use it in the sim, so the header doesn't depend on SPI.h.
+class SPIClass;
+
+// SD card type — ESP32 SD library enum, declared at global scope to match
+// real hardware (sketches use `CARD_NONE` etc. unqualified). Defined before
+// namespace fs so fs::FS::cardType() can reference it.
+typedef enum {
+    CARD_NONE    = 0,
+    CARD_MMC     = 1,
+    CARD_SD      = 2,
+    CARD_SDHC    = 3,
+    CARD_UNKNOWN = 4,
+} sdcard_type_t;
 
 namespace fs {
 
@@ -14,16 +30,25 @@ public:
 
     File(const File&) = delete;
     File& operator=(const File&) = delete;
-    File(File&& o) noexcept : fp_(o.fp_), writable_(o.writable_) { o.fp_ = nullptr; }
+    File(File&& o) noexcept
+        : fp_(o.fp_), writable_(o.writable_), path_(std::move(o.path_)),
+          dir_iter_(o.dir_iter_), is_dir_(o.is_dir_) {
+        o.fp_ = nullptr; o.dir_iter_ = nullptr;
+    }
     File& operator=(File&& o) noexcept {
-        if (this != &o) { close(); fp_ = o.fp_; writable_ = o.writable_; o.fp_ = nullptr; }
+        if (this != &o) {
+            close(); fp_ = o.fp_; writable_ = o.writable_;
+            path_ = std::move(o.path_); dir_iter_ = o.dir_iter_; is_dir_ = o.is_dir_;
+            o.fp_ = nullptr; o.dir_iter_ = nullptr;
+        }
         return *this;
     }
 
-    operator bool() const { return fp_ != nullptr; }
+    operator bool() const { return fp_ != nullptr || is_dir_; }
 
     size_t  read(uint8_t* buf, size_t n);
     int     read();
+    int     available();
     size_t  write(const uint8_t* buf, size_t n);
     size_t  write(uint8_t b);
     size_t  size();
@@ -32,13 +57,38 @@ public:
     bool    seek(uint32_t pos);
     uint32_t position();
 
-    String  name() { return path_; }
+    // Print-API helpers — Arduino's File inherits from Print on real hardware.
+    // We replicate just enough surface for code that streams strings/numbers.
+    size_t  print(const char* s);
+    size_t  print(const String& s) { return print(s.c_str()); }
+    size_t  print(int v);
+    size_t  print(long v);
+    size_t  print(unsigned long v);
+    size_t  print(double v, int decimals = 2);
+    size_t  println();
+    size_t  println(const char* s);
+    size_t  println(const String& s) { return println(s.c_str()); }
+
+    // Directory APIs — `openNextFile()` walks the FS::open(path, "r") on a
+    // directory; in the sim we open the directory iterator under the hood.
+    bool    isDirectory() const { return is_dir_; }
+    File    openNextFile(const char* mode = "r");
+
+    String  name();   // basename of path_
+    String  path()    { return path_; }
     void    setPath(const String& p) { path_ = p; }
+
+    // Hook for FS::open() to mark a directory-flavoured File. Stores the
+    // host-side absolute root path so openNextFile can iterate it.
+    void    set_as_directory(const std::string& abs_root);
 
 private:
     FILE*  fp_       = nullptr;
     bool   writable_ = false;
-    String path_;
+    String path_;          // sketch-visible path (mount-relative, leading "/")
+    void*  dir_iter_ = nullptr;
+    bool   is_dir_   = false;
+    std::string abs_root_; // host-side absolute path (only set when is_dir_)
 };
 
 class FS {
@@ -46,6 +96,12 @@ public:
     FS(const String& mount_root) : root_(mount_root) {}
 
     bool   begin(bool format_on_fail = false);
+    // ESP32 SD overload: begin(cs, spi, frequency). We ignore the SPI side
+    // — sim FS is host-backed — but accept the call so SD-using sketches
+    // compile and mount.
+    bool   begin(int /*cs*/, SPIClass& /*spi*/, uint32_t /*frequency*/ = 4000000) {
+        return begin(false);
+    }
     void   end() {}
     File   open(const char* path, const char* mode = "r");
     File   open(const String& path, const char* mode = "r") { return open(path.c_str(), mode); }
@@ -56,6 +112,12 @@ public:
 
     size_t usedBytes()  { return 0; }
     size_t totalBytes() { return 1024 * 1024; }
+
+    // SD-specific introspection. The sim always reports a 512MB SDHC card so
+    // `cardType() != CARD_NONE` gates open and capacity checks pass. Returning
+    // a non-NONE value also lets the sketch reach the "mounted" code path.
+    ::sdcard_type_t cardType()  { return root_ == "sd" ? ::CARD_SDHC : ::CARD_NONE; }
+    uint64_t        cardSize()  { return root_ == "sd" ? (512ULL * 1024 * 1024) : 0; }
 
 private:
     String map_(const char* p);

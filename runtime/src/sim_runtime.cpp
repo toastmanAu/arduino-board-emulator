@@ -260,4 +260,24 @@ bool getLocalTime(struct tm* info, uint32_t /*ms*/) {
     return true;
 }
 
+// esp_random — ESP32 hardware RNG. The sim uses rand() which is seeded by
+// sim_main.cpp at startup; sketches that gate retry timing or jitter on this
+// get a different sequence per run without configuration.
+uint32_t esp_random(void) {
+    // Combine two rand() calls to fill 32 bits since RAND_MAX is typically
+    // 0x7fffffff on Linux — leaves the high bit zero otherwise.
+    return (uint32_t)rand() ^ ((uint32_t)rand() << 16);
+}
+
+// ESP32 LEDC PWM API — no audio + fixed backlight in the sim, so all calls
+// silently succeed. Kept here so cppcheck sees a single definition rather
+// than weak-linkage placeholders.
+void ledcSetup(uint8_t /*channel*/, double /*freq*/, uint8_t /*res*/)  {}
+void ledcAttachPin(uint8_t /*pin*/, uint8_t /*channel*/)               {}
+void ledcDetachPin(uint8_t /*pin*/)                                    {}
+void ledcWrite(uint8_t /*channel*/, uint32_t /*duty*/)                 {}
+void ledcWriteTone(uint8_t /*channel*/, double /*freq*/)               {}
+void ledcWriteNote(uint8_t /*channel*/, uint8_t /*note*/, uint8_t /*octave*/) {}
+uint32_t ledcRead(uint8_t /*channel*/)                                 { return 0; }
+
 } // extern "C"
