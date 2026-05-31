@@ -60,10 +60,6 @@ namespace {
     // This decouples screenshot capture from sketch execution — the sketch can be
     // blocked in calibrateTouch or a long drawing operation and the screenshot
     // still fires on schedule.
-    // Background render thread driving LovyanGFX's Panel_sdl::loop. Sketches
-    // that don't use Panel_sdl::main (we use our own sim_main) still need its
-    // OUT semaphore to be posted so per-pixel writes in drawJpgFile etc. don't
-    // each wait 1ms for nothing (153K pixels × 1ms ≈ 150s of pointless sleep).
     void screenshot_watcher_thread() {
         while (!g_should_quit.load()) {
             if (g_screenshot_requested.exchange(0) == 1) {
@@ -130,6 +126,18 @@ void sim_runtime_shutdown(void) {
 }
 
 void sim_pump_events(void) {
+    // Drive Panel_sdl's update loop from the main thread. This is what
+    // creates the SDL_Window the first time a Panel_sdl monitor is
+    // registered, and what swaps the back buffer to the visible window each
+    // frame thereafter. Without it, pure-LovyanGFX sketches (i.e. anything
+    // not using LVGL's own SDL backend) render to an in-memory framebuffer
+    // that's only ever visible via the screenshot watcher — interactive
+    // mode shows no window at all. Cost: up to 1ms per pump (internal
+    // SDL_SemWaitTimeout). An earlier render_thread was tried in a
+    // background thread but caused window-creation lock contention under
+    // Wayland; running Panel_sdl::loop on the main thread fixes both.
+    lgfx::Panel_sdl::loop();
+
     // Pump the OS event queue so any pending events are visible.
     SDL_PumpEvents();
     // Extract ONLY SDL_QUIT events; leave mouse/keyboard/window events in
