@@ -24,6 +24,15 @@ pub const ALLOWLIST: &[&str] = &[
     "StreamDebugger",
     // M2.C — shim wins via header-only override
     "ArduinoWebsockets",
+    // M2.F — ckb_pos_v0.2.6 bring-up. Each is a no-op shim under runtime/shims/
+    // sufficient to keep the sketch compiling; behaviour is sim-appropriate
+    // (logs receipts to stdout, treats Update.begin() as success, etc.).
+    "ESPmDNS",
+    "WebServer",
+    "Update",
+    "TimeLib",
+    "ESP32Time",
+    "Adafruit_Thermal",
 ];
 
 pub fn is_shimmed(lib: &str) -> bool {
@@ -45,6 +54,8 @@ mod tests {
     #[test]
     fn unknown_libs_are_not_shimmed() {
         assert!(!is_shimmed("ArduinoJson"));
-        assert!(!is_shimmed("TimeLib"));
+        // Note: TimeLib joined the shim list in the ckb_pos bring-up — see
+        // runtime/shims/TimeLib.h. Pick a name we still definitely don't shim.
+        assert!(!is_shimmed("PubSubClient"));
     }
 }

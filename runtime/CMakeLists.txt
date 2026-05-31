@@ -21,6 +21,7 @@ add_library(sim_runtime STATIC
     src/sim_http.cpp
     src/sim_eeprom.cpp
     src/sim_fs.cpp
+    src/sim_misc.cpp
 )
 
 target_include_directories(sim_runtime
