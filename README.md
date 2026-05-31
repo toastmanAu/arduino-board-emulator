@@ -2,7 +2,7 @@
 
 Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on your desktop. No flashing, no real hardware.
 
-**Status:** Through M2.E. Engine, CLI, launcher, 7 displays + touch + GPIO + screenshot, IoT library auto-discovery, LGFX hardware-setup codemod, scripted touch primitive. cryptoTickerv3 (4389 lines) verified running interactively.
+**Status:** Through M2.F. Engine, CLI, launcher, 7 displays + touch + GPIO + screenshot, IoT library auto-discovery, LGFX hardware-setup codemod, scripted touch primitive, SPIFFS `data/` auto-mirror, sibling-source collection. Two real ESP32 user sketches verified running interactively: cryptoTickerv3 (4389 LOC, live CoinGecko pricing) and ckb_pos_v0.2.6 (4389 LOC, boots to main menu with 101 SPIFFS assets).
 
 ## What works
 
@@ -152,9 +152,12 @@ in the sim:
 #    auto-discovers anything installed in ~/Arduino/libraries/).
 arduino-cli lib install ArduinoJson "ESP32Time" "ArduinoWebsockets" "Time"
 
-# 2. Drop placeholder assets the sketch tries to load from SPIFFS —
-#    boardghost mounts ./sim-assets/spiffs/ as the SPIFFS root. Any tiny
-#    JPG/PNG will satisfy the decoder; real artwork can be copied in.
+# 2. Drop assets the sketch tries to load from SPIFFS / LittleFS — if your
+#    sketch ships a `data/` directory (the Arduino IDE's SPIFFS partition
+#    convention), it's auto-mirrored to the sim's mount roots at build
+#    time, so `SPIFFS.open("/foo.png")` resolves transparently.
+#
+#    Otherwise drop placeholder files under sim-assets/spiffs/ directly.
 mkdir -p path/to/your-sketch/sim-assets/spiffs
 # (drop your-png-files-here)
 
