@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     arduino_libs, board::BoardProfile, codegen, compile, discover, include_scan,
-    lgfx_codemod, lib_resolve, libraries, preprocess, sketch_mirror,
+    lgfx_codemod, lib_resolve, libraries, preprocess, sketch_mirror, spiffs_mirror,
 };
 
 pub struct BuildResult {
@@ -66,6 +66,24 @@ pub fn run_build(
     } else {
         (discovered.entry.clone(), original_sketch_dir.clone())
     };
+
+    // Stage 1.6: Mirror sketch `data/` → sim-assets/{spiffs,littlefs} so any
+    // SPIFFS / LittleFS reads at runtime resolve. The sim-assets root sits at
+    // <project>/.boardghost/sim-assets/ (one level above out_root); see the
+    // runtime sim_fs.cpp `assets_root()` for the path math it expects.
+    let sim_assets_root = out_root
+        .parent()
+        .map(|p| p.join("sim-assets"))
+        .ok_or_else(|| anyhow::anyhow!("out_root has no parent: {:?}", out_root))?;
+    match spiffs_mirror::mirror_sketch_data(&original_sketch_dir, &sim_assets_root)? {
+        Some(report) => eprintln!(
+            "→ SPIFFS data mirror: {} files ({} bytes) from {} → spiffs/ + littlefs/",
+            report.file_count,
+            report.total_bytes,
+            report.source.display(),
+        ),
+        None => eprintln!("→ SPIFFS data mirror: no data/ dir; skipping"),
+    }
 
     // Stage 2a: Scan sketch for #include directives BEFORE preprocess so we can
     // tell arduino-cli where the user's libraries live.
@@ -131,6 +149,16 @@ pub fn run_build(
     // Stage 4: Codegen (uses out_root established in Stage 1.5).
     let sketch_cpp_abs = preprocessed.canonicalize()
         .with_context(|| format!("canonicalize preprocessed file {:?}", preprocessed))?;
+
+    // Glob the (effective) sketch dir for sibling source files — sketches that
+    // ship a qrcode.c or similar next to the .ino need those compiled too.
+    // arduino-cli's --preprocess only emits the .ino's translation unit, so
+    // we collect *.c/*.cpp/*.cc here and hand them to CMake explicitly.
+    let extra_sketch_sources = collect_sibling_sources(&effective_sketch_dir, &preprocessed)?;
+    if !extra_sketch_sources.is_empty() {
+        eprintln!("→ Extra sketch sources: {} file(s)", extra_sketch_sources.len());
+    }
+
     let _ = codegen::generate_cmake(&codegen::CodegenInput {
         sketch_cpp:  sketch_cpp_abs,
         board:       &board,
@@ -138,6 +166,7 @@ pub fn run_build(
         release,
         out_dir:     out_root.clone(),
         libraries:   resolved,
+        extra_sketch_sources,
     })?;
 
     // Stage 5: Compile
@@ -146,4 +175,53 @@ pub fn run_build(
     eprintln!("→ Binary: {:?}", out.binary);
 
     Ok(BuildResult { binary: out.binary })
+}
+
+/// Collects sibling source files in `sketch_dir` — *.c / *.cpp / *.cc that
+/// aren't the preprocessed entry. Sketches like ckb_pos ship a `qrcode.c`
+/// next to the .ino; arduino-cli's --preprocess merges only the .ino, so we
+/// need to compile these explicitly. Returns absolute paths.
+///
+/// Excludes:
+/// - The `preprocessed_entry` (the .boardghost.cpp the CLI just generated).
+/// - Files in the sketch's `data/` subdir — that's the SPIFFS asset payload.
+fn collect_sibling_sources(
+    sketch_dir: &Path,
+    preprocessed_entry: &Path,
+) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let canon_pp = preprocessed_entry.canonicalize().ok();
+    walk_for_sources(sketch_dir, sketch_dir, &canon_pp, &mut out)?;
+    out.sort();
+    Ok(out)
+}
+
+fn walk_for_sources(
+    root: &Path,
+    cur:  &Path,
+    skip_pp: &Option<PathBuf>,
+    out:  &mut Vec<PathBuf>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(cur)
+        .with_context(|| format!("read_dir {:?}", cur))?
+    {
+        let entry = entry?;
+        let path  = entry.path();
+        let name  = entry.file_name();
+        if path.is_dir() {
+            if name == "data" || name == ".boardghost" { continue; }
+            walk_for_sources(root, &path, skip_pp, out)?;
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else { continue; };
+        if !matches!(ext, "c" | "cpp" | "cc" | "cxx") { continue; }
+        let canon = path.canonicalize().unwrap_or(path.clone());
+        if skip_pp.as_ref().is_some_and(|p| p == &canon) { continue; }
+        // Also skip the .boardghost.cpp file by name pattern in case the
+        // canonicalize comparison fails on case-insensitive FS.
+        if path.file_name().and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(".boardghost.cpp")) { continue; }
+        out.push(canon);
+    }
+    Ok(())
 }

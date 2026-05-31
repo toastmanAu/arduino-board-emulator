@@ -14,6 +14,11 @@ pub struct CodegenInput<'a> {
     pub release:     bool,
     pub out_dir:     PathBuf,
     pub libraries:   Vec<ResolvedLibrary>,
+    /// Extra .c/.cpp files living in the sketch directory (e.g. ckb_pos's
+    /// qrcode.c). Listed explicitly so the CMake build compiles them; the
+    /// arduino-cli `--preprocess` step only emits the merged .ino translation
+    /// unit and ignores siblings.
+    pub extra_sketch_sources: Vec<PathBuf>,
 }
 
 #[derive(serde::Serialize)]
@@ -58,6 +63,9 @@ pub fn generate_cmake(input: &CodegenInput) -> Result<PathBuf> {
     ctx.insert("display_height", &input.board.display.height);
     ctx.insert("release",        &input.release);
     ctx.insert("libraries",      &libs_ctx);
+    let extra_srcs: Vec<String> = input.extra_sketch_sources.iter()
+        .map(|p| p.to_string_lossy().to_string()).collect();
+    ctx.insert("extra_sketch_sources", &extra_srcs);
 
     let rendered = tera.render("cml", &ctx)?;
     let out = input.out_dir.join("CMakeLists.txt");
@@ -101,6 +109,7 @@ mod tests {
             release: false,
             out_dir: out_dir.clone(),
             libraries: vec![],
+            extra_sketch_sources: vec![],
         }).unwrap();
         let content = std::fs::read_to_string(&result).unwrap();
         assert!(content.contains("/tmp/sketch.cpp"));
@@ -129,6 +138,7 @@ mod tests {
             release: false,
             out_dir: dir.path().to_path_buf(),
             libraries: vec![lib],
+            extra_sketch_sources: vec![],
         }).unwrap();
         let content = std::fs::read_to_string(&result).unwrap();
         assert!(content.contains("# Library: ArduinoJson"));
@@ -156,6 +166,7 @@ mod tests {
             release: false,
             out_dir: dir.path().to_path_buf(),
             libraries: vec![lib],
+            extra_sketch_sources: vec![],
         }).unwrap();
         let content = std::fs::read_to_string(&result).unwrap();
         assert!(content.contains("/abs/runtime/shims/sim_ws"));

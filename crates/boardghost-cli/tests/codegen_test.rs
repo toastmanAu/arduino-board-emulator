@@ -23,6 +23,7 @@ fn generates_cmakelists_with_substitutions() {
         release:     false,
         out_dir:     out_dir.clone(),
         libraries:   vec![],
+        extra_sketch_sources: vec![],
     };
     generate_cmake(&input).expect("codegen");
 
