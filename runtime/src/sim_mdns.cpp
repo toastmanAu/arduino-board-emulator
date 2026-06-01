@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <string>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -87,6 +88,15 @@ private:
         pid_t pid = fork();
         if (pid < 0) return;
         if (pid == 0) {
+            // Tie our lifetime to the parent (sketch) — if the parent dies
+            // for any reason (SIGKILL, segfault, debugger detach), the
+            // kernel will send us SIGTERM. Without this, an abruptly-killed
+            // sketch leaves avahi-publish-service zombies advertising the
+            // service name forever (until next reboot or manual cleanup).
+            prctl(PR_SET_PDEATHSIG, SIGTERM);
+            // Edge case: parent already died between fork and prctl. Detect
+            // by getppid; if it's 1 (reparented to init), bail.
+            if (getppid() == 1) _exit(0);
             // Child — silence avahi's chatty stdout/stderr; we don't want
             // the sketch's log polluted with "Established under name 'foo'".
             int devnull = open("/dev/null", O_WRONLY);
