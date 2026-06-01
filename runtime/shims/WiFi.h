@@ -94,17 +94,19 @@ public:
     void         setSleep(bool /*s*/) {}
     void         setHostname(const char* /*h*/) {}
 
-    // M2.D — scan API. Stub returns 0 (no networks seen) in all modes; per-index
-    // accessors return safe defaults. Sketches that iterate the scan results
-    // simply find zero entries and skip the loop.
-    int16_t          scanNetworks(bool /*async*/ = false, bool /*show_hidden*/ = false,
-                                  bool /*passive*/ = false, uint32_t /*max_ms_per_chan*/ = 300) { return 0; }
-    int              RSSI(uint8_t /*idx*/)            { return 0; }
-    int32_t          channel(uint8_t /*idx*/)         { return 0; }
-    wifi_auth_mode_t encryptionType(uint8_t /*idx*/)  { return WIFI_AUTH_OPEN; }
-    String           SSID(uint8_t /*idx*/)            { return String(); }
-    String           BSSIDstr(uint8_t /*idx*/)        { return String(); }
-    void             scanDelete()                     {}
+    // Scan API. Real implementation lives in sim_wifi.cpp — sources scan
+    // entries from BOARDGHOST_WIFI_SCAN env (semicolon-separated
+    // "ssid,security,rssi[,channel]"), nmcli on Linux, or a built-in
+    // default list. Sketches walking the indices see real-looking SSIDs
+    // so the WiFi-picker UI has something to render.
+    int16_t          scanNetworks(bool async = false, bool show_hidden = false,
+                                  bool passive = false, uint32_t max_ms_per_chan = 300);
+    int              RSSI(uint8_t idx);
+    int32_t          channel(uint8_t idx);
+    wifi_auth_mode_t encryptionType(uint8_t idx);
+    String           SSID(uint8_t idx);
+    String           BSSIDstr(uint8_t idx);
+    void             scanDelete();
 
     // Event-callback registration — accepts both the legacy (event-only) and
     // full (event + info) signatures. Real hardware fires these on state

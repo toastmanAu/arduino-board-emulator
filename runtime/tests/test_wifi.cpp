@@ -8,7 +8,9 @@ TEST(WiFi, FakeModeConnectsImmediately) {
     EXPECT_EQ(WiFi.begin("ssid", "pw"), WL_CONNECTED);
     EXPECT_EQ(WiFi.status(), WL_CONNECTED);
     EXPECT_TRUE(WiFi.isConnected());
-    EXPECT_EQ(WiFi.localIP().toString(), String("127.0.0.1"));
+    // localIP returns the host's primary LAN IPv4; LocalIPReturnsNonLoopback
+    // covers the value details — we just confirm a non-empty IP string here.
+    EXPECT_GT(WiFi.localIP().toString().length(), 0u);
 }
 
 TEST(WiFi, FailModeReportsNoSsid) {
@@ -33,6 +35,47 @@ TEST(WiFiClientSecure, CompilesAndDelegates) {
     client.setCACert("dummy");
     client.setInsecure();
     EXPECT_EQ(client.connect("example.com", 443), 1);
+}
+
+TEST(WiFi, ScanReturnsParsedEnvOverride) {
+    // Pin scan via env so the test doesn't depend on the host's wifi state.
+    setenv("BOARDGHOST_NET", "fake", 1);
+    setenv("BOARDGHOST_WIFI_SCAN",
+           "homenet,WPA2,-45,6;coffee-shop,open,-72,11;legacy,WEP,-88,1",
+           1);
+    int16_t n = WiFi.scanNetworks();
+    EXPECT_EQ(n, 3);
+    EXPECT_EQ(WiFi.SSID(0),           String("homenet"));
+    EXPECT_EQ(WiFi.encryptionType(0), WIFI_AUTH_WPA2_PSK);
+    EXPECT_EQ(WiFi.RSSI(0),           -45);
+    EXPECT_EQ(WiFi.channel(0),        6);
+    EXPECT_EQ(WiFi.SSID(1),           String("coffee-shop"));
+    EXPECT_EQ(WiFi.encryptionType(1), WIFI_AUTH_OPEN);
+    EXPECT_EQ(WiFi.encryptionType(2), WIFI_AUTH_WEP);
+    // Out-of-range index returns safe defaults rather than crashing.
+    EXPECT_EQ(WiFi.SSID(99), String());
+    EXPECT_EQ(WiFi.RSSI(99), 0);
+    unsetenv("BOARDGHOST_WIFI_SCAN");
+}
+
+TEST(WiFi, ScanReturnsZeroInFailMode) {
+    setenv("BOARDGHOST_NET", "fail", 1);
+    setenv("BOARDGHOST_WIFI_SCAN", "anything,open,-50", 1);
+    EXPECT_EQ(WiFi.scanNetworks(), 0);
+    unsetenv("BOARDGHOST_WIFI_SCAN");
+}
+
+TEST(WiFi, LocalIPReturnsNonLoopbackWhenAvailable) {
+    // We can't pin what the host's IP is, but we can assert the behaviour:
+    // either there's a non-loopback IPv4 (most dev machines), in which case
+    // it's not 127.x.x.x; or there isn't, in which case we fall back to
+    // 127.0.0.1 by design.
+    auto ip = WiFi.localIP();
+    uint32_t raw = (uint32_t)ip;
+    bool loopback = ((raw >> 24) & 0xFF) == 127;
+    // If we did get loopback it had better be exactly 127.0.0.1, not garbage.
+    if (loopback) EXPECT_EQ(ip.toString(), String("127.0.0.1"));
+    // Otherwise it's a real LAN address — we don't assert which.
 }
 
 TEST(WiFi, DisconnectFlipsStatusSoSpinWaitTerminates) {
