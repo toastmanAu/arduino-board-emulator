@@ -171,9 +171,36 @@ TEST(WiFiClientSecureReal, HandshakeWithPinnedCASucceeds) {
     WiFiClientSecure client;
     client.setCACert(self_signed().cert_pem.c_str());  // pin our self-signed CA
     client.setTimeout(2000);
-    // Verification should pass against the pinned cert without setInsecure.
-    EXPECT_EQ(client.connect("127.0.0.1", port), 1);
+    // Cert was issued for CN=localhost. Connecting via "localhost" passes
+    // both chain validation (pinned CA) and hostname verification.
+    EXPECT_EQ(client.connect("localhost", port), 1);
     client.stop();
+}
+
+TEST(WiFiClientSecureReal, RejectsChainValidCertForWrongHostname) {
+    // The dangerous case that hostname verification protects against: the
+    // chain is valid (pinned CA) but the hostname in the cert (CN=localhost)
+    // does NOT match the host we asked to connect to ("127.0.0.1" is an IP
+    // literal, not the literal string "localhost"). Without hostname
+    // verification a MITM with any chain-valid cert could intercept; with it
+    // the handshake aborts.
+    setenv("BOARDGHOST_NET", "real", 1);
+    uint16_t port = pick_port();
+    TlsServer server(port);
+
+    WiFiClientSecure client;
+    client.setCACert(self_signed().cert_pem.c_str());
+    client.setTimeout(2000);
+    EXPECT_EQ(client.connect("127.0.0.1", port), 0)
+        << "expected hostname mismatch to fail handshake";
+    EXPECT_FALSE(client.connected());
+
+    // setInsecure() bypasses both checks — should now succeed.
+    WiFiClientSecure permissive;
+    permissive.setInsecure();
+    permissive.setTimeout(2000);
+    EXPECT_EQ(permissive.connect("127.0.0.1", port), 1);
+    permissive.stop();
 }
 
 TEST(WiFiClientSecureReal, HandshakeFailsAgainstUntrustedSelfSigned) {

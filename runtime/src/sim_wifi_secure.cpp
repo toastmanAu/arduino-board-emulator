@@ -161,6 +161,18 @@ int WiFiClientSecure::connect(const char* host, uint16_t port) {
     // SNI — server uses this to pick the right cert. Required for most
     // multi-tenant TLS endpoints (CloudFront, Cloudflare, etc.).
     if (host && *host) SSL_set_tlsext_host_name(state->ssl, host);
+    // Hostname verification — without this, SSL_VERIFY_PEER only checks
+    // chain validity, so a chain-valid cert for the wrong hostname would
+    // pass and MITM is trivial. Skip when the user opted into insecure or
+    // host is unset (IP literals don't carry a hostname to match).
+    if (!insecure_ && host && *host) {
+        X509_VERIFY_PARAM* param = SSL_get0_param(state->ssl);
+        X509_VERIFY_PARAM_set_hostflags(param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+        if (X509_VERIFY_PARAM_set1_host(param, host, 0) != 1) {
+            WiFiClient::stop();
+            return 0;
+        }
+    }
 
     int rc = SSL_connect(state->ssl);
     if (rc != 1) {
