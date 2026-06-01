@@ -25,6 +25,7 @@ add_library(sim_runtime STATIC
     src/sim_webserver.cpp
     src/sim_wifi_secure.cpp
     src/sim_websockets.cpp
+    src/sim_mdns.cpp
     third_party/cpp-httplib/httplib.cpp
 )
 

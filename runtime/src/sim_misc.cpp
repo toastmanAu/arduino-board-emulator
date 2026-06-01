@@ -2,14 +2,15 @@
 // a single translation unit to host their `extern`-declared singletons
 // (MDNS, Update). Kept in one file to avoid sim_xxxx.cpp sprawl per shim.
 
-#include "ESPmDNS.h"
 #include "Update.h"
 #include "Arduino.h"
 
 #include <cstdio>
 #include <cstdlib>
 
-MDNSResponder MDNS;
+// MDNS instance is defined in sim_mdns.cpp — it carries non-trivial state
+// (child PIDs of avahi-publish subprocesses) so doesn't fit the
+// header-only-no-op pattern this file is for.
 UpdateClass   Update;
 ESPClass      ESP;
 
