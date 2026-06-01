@@ -102,7 +102,7 @@ const char* kReceiptHtml = R"HTML(<!DOCTYPE html>
   .tape .dhw     { font-size: 1.6em; letter-spacing: 0.2em; line-height: 1.2; }
   .tape .qr      { display: inline-block; margin: 8px 0; padding: 8px;
                    background: #fff; border: 1px solid #ccc; }
-  .tape .qr img  { display: block; }
+  .tape .qr svg  { display: block; image-rendering: pixelated; }
   header { color: #888; font-size: 12px; text-align: center; margin-bottom: 12px; }
   footer { color: #555; font-size: 11px; text-align: center; margin-top: 12px; }
 </style>
@@ -111,6 +111,12 @@ const char* kReceiptHtml = R"HTML(<!DOCTYPE html>
 <header>BoardGhost printer tape — UART1 — auto-refreshing</header>
 <div id="tape" class="tape"></div>
 <footer><span id="byte-count">0</span> bytes captured · refreshing every 500ms</footer>
+<!-- qrcode-generator pinned by SHA-384 SRI so a CDN compromise can't
+     substitute an implementation that exfiltrates the payload. QR
+     payloads (payment URIs, addresses) stay entirely in the browser. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"
+        integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k"
+        crossorigin="anonymous"></script>
 <script>
 // ESC/POS parser. We only care about the subset that affects the visual
 // receipt output — formatting, justify, QR codes. Anything else is stripped.
@@ -178,11 +184,26 @@ function render(lines) {
     row.className = "row " + (l.justify || "left");
     if (l.qr) {
       const wrap = document.createElement("span"); wrap.className = "qr";
-      const img = document.createElement("img");
-      img.src = "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=" + encodeURIComponent(l.qr);
-      img.alt = l.qr;
-      img.title = l.qr;
-      wrap.appendChild(img);
+      // Render the QR locally in the browser — never send the payload to
+      // any third-party service. qrcode-generator is loaded with SRI pin
+      // so a CDN compromise can't substitute a leaky implementation.
+      try {
+        const qr = qrcode(0 /* auto type number */, "M" /* error correction */);
+        qr.addData(l.qr);
+        qr.make();
+        // createSvgTag returns an SVG string sized to fit; cellSize=4 gives
+        // ~160px for a typical address-sized payload.
+        const svg = qr.createSvgTag({ cellSize: 4, margin: 2 });
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svg, "image/svg+xml");
+        const node = doc.documentElement;
+        node.setAttribute("title", l.qr);
+        wrap.appendChild(node);
+      } catch (e) {
+        const err = document.createElement("div");
+        err.style.color = "#a31"; err.textContent = "QR render failed: " + e.message;
+        wrap.appendChild(err);
+      }
       const cap = document.createElement("div"); cap.style.fontSize = "10px"; cap.style.marginTop = "4px";
       cap.style.wordBreak = "break-all"; cap.textContent = l.qr;
       wrap.appendChild(cap);
