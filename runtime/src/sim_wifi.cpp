@@ -7,9 +7,13 @@
 #include <cstring>
 #include <ifaddrs.h>
 #include <memory>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <string>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -224,21 +228,134 @@ void WiFiClass::scanDelete() {
 }
 
 // --- WiFiClient ---
+//
+// Real-mode TCP: getaddrinfo + connect a POSIX socket. recv/send/close drive
+// the Stream surface (read/write/available/stop). Read/write timeout maps to
+// SO_RCVTIMEO / SO_SNDTIMEO from Stream::setTimeout(ms).
+//
+// Fake mode: keep a bool so sketches that just check connected() without
+// doing I/O don't break. Fail mode: connect returns 0, all reads return 0,
+// writes succeed (avoids the sketch retrying on send errors when the user
+// explicitly opted into "no network").
+
+BoardghostSocket::~BoardghostSocket() {
+    if (fd >= 0) ::close(fd);
+}
+
+namespace {
+
+int sock_fd(const std::shared_ptr<BoardghostSocket>& s) {
+    return s ? s->fd : -1;
+}
+
+void apply_timeout(int fd, uint32_t ms) {
+    if (fd < 0) return;
+    struct timeval tv;
+    tv.tv_sec  = ms / 1000;
+    tv.tv_usec = (ms % 1000) * 1000;
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+}  // namespace
+
+void WiFiClient::reapply_timeout() {
+    apply_timeout(sock_fd(sock_), timeout_ms_);
+}
 
 int WiFiClient::connect(const char* host, uint16_t port) {
-    (void)host; (void)port;
     if (sim_net_mode() == BOARDGHOST_NET_FAIL) {
-        connected_ = false;
+        sock_.reset();
+        fake_connected_ = false;
         return 0;
     }
-    connected_ = true;
+    if (sim_net_mode() == BOARDGHOST_NET_FAKE || !host || !*host) {
+        // Fake mode: no real socket, just say connected. Matches what we did
+        // before — sketches that exercise the stream API will see EOF.
+        sock_.reset();
+        fake_connected_ = true;
+        return 1;
+    }
+
+    // Real mode: actually open a TCP socket.
+    char port_str[8];
+    std::snprintf(port_str, sizeof(port_str), "%u", port);
+    struct addrinfo hints{};
+    hints.ai_family   = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* res = nullptr;
+    if (::getaddrinfo(host, port_str, &hints, &res) != 0 || !res) {
+        sock_.reset();
+        fake_connected_ = false;
+        return 0;
+    }
+    int fd = -1;
+    for (auto* ai = res; ai; ai = ai->ai_next) {
+        fd = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (fd < 0) continue;
+        if (::connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) break;
+        ::close(fd);
+        fd = -1;
+    }
+    ::freeaddrinfo(res);
+    if (fd < 0) {
+        sock_.reset();
+        fake_connected_ = false;
+        return 0;
+    }
+    sock_ = std::make_shared<BoardghostSocket>();
+    sock_->fd = fd;
+    fake_connected_ = false;
+    reapply_timeout();
     return 1;
 }
 
-void WiFiClient::stop() { connected_ = false; }
-bool WiFiClient::connected() { return connected_; }
+void WiFiClient::stop() {
+    sock_.reset();
+    fake_connected_ = false;
+}
+
+bool WiFiClient::connected() const {
+    if (sock_fd(sock_) >= 0) return true;
+    return fake_connected_;
+}
+
+int WiFiClient::available() {
+    int fd = sock_fd(sock_);
+    if (fd < 0) return 0;
+    int n = 0;
+    if (::ioctl(fd, FIONREAD, &n) != 0) return 0;
+    return n;
+}
+
+int WiFiClient::read() {
+    uint8_t b = 0;
+    int got = read(&b, 1);
+    return got == 1 ? (int)b : -1;
+}
 
 int WiFiClient::read(uint8_t* buf, size_t n) {
-    (void)buf; (void)n;
-    return 0;   // no incoming data in fake mode
+    int fd = sock_fd(sock_);
+    if (fd < 0 || !buf || n == 0) return 0;
+    ssize_t r = ::recv(fd, buf, n, 0);
+    if (r < 0) return 0;          // timeout / error → 0 so Stream callers don't loop forever
+    if (r == 0) { stop(); return 0; }  // remote closed
+    return (int)r;
+}
+
+size_t WiFiClient::write(uint8_t b) {
+    return write(&b, 1);
+}
+
+size_t WiFiClient::write(const uint8_t* buf, size_t n) {
+    int fd = sock_fd(sock_);
+    if (fd < 0 || !buf || n == 0) {
+        // Fake mode: pretend the bytes went out. Matches old behaviour.
+        return n;
+    }
+    // MSG_NOSIGNAL: don't SIGPIPE on peer-closed sockets — we surface the
+    // error via the return value instead.
+    ssize_t w = ::send(fd, buf, n, MSG_NOSIGNAL);
+    if (w < 0) return 0;
+    return (size_t)w;
 }
