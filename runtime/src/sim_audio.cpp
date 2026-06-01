@@ -83,18 +83,23 @@ void audio_callback(void* /*ud*/, Uint8* stream, int len) {
             double tri = (phase_norm < 0.5)
                 ? (4.0 * phase_norm - 1.0)
                 : (3.0 - 4.0 * phase_norm);
-            // Apply duty as amplitude so high-duty tones are louder than
-            // low-duty ones — matches how the sketch uses duty (50, 5, 2
-            // for "loud, normal, quiet" in playTune).
-            mixed += tri * ch.duty_fraction;
+            // Duty is a gate (>0 = on, 0 = off), NOT a linear amplitude
+            // scaler. Real sketches use tiny duty values (2 of 255) as
+            // "play this tone" because on a piezo the average voltage
+            // barely matters — the piezo responds to the transitions, not
+            // the DC level. Scaling amplitude by duty would make
+            // ledcWrite(0, 2) essentially silent through the host's
+            // speakers, which was the regression that prompted this code:
+            // before scaling, the user heard playTune; after, they didn't.
+            mixed += tri;
             ch.phase += 2.0 * M_PI * ch.freq_hz / kSampleRate;
             if (ch.phase >= 2.0 * M_PI) ch.phase -= 2.0 * M_PI;
         }
         // Average across active channels so adding a second tone doesn't
-        // double the volume. Lower master volume to 12% — laptop speakers
-        // are nothing like a piezo, anything higher is fatiguing during a
-        // long debug session.
-        if (active > 0) mixed = (mixed / active) * 0.12;
+        // double the volume. 18% master volume — louder than 12% (which
+        // turned out to be too quiet for the triangle-wave + low-amplitude
+        // combination) but still safe for long debug sessions.
+        if (active > 0) mixed = (mixed / active) * 0.18;
         int sample = (int)(mixed * 32767);
         sample = std::clamp(sample, -32767, 32767);
         out[i] = (int16_t)sample;
