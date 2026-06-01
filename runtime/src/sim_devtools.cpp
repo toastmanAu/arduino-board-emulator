@@ -274,18 +274,24 @@ function setStatus(msg, ok) {
   const s = $("status"); s.textContent = msg; s.className = "status " + (ok ? "ok" : "err"); s.style.display = "block";
   setTimeout(() => { s.style.display = "none"; }, 4000);
 }
+// All POSTs carry an X-BoardGhost-Devtools header so a malicious cross-
+// origin page can't drive injects via a simple <form> submission — the
+// custom header forces a CORS preflight that we never satisfy.
+const INJECT_HEADERS = { "Content-Type": "text/plain", "X-BoardGhost-Devtools": "1" };
 async function inject(text) {
   if (!text) return setStatus("nothing to inject", false);
   const crlf = $("crlf").checked;
   const body = crlf ? text + "\r\n" : text;
   try {
-    const r = await fetch("/scanner/inject", { method: "POST", body });
+    const r = await fetch("/scanner/inject", { method: "POST", body, headers: INJECT_HEADERS });
     if (r.ok) setStatus("Queued " + body.length + " bytes — click scanner UI on sketch to fire", true);
     else     setStatus("inject failed: " + (await r.text()), false);
   } catch (e) { setStatus("network error: " + e, false); }
 }
 $("inject").addEventListener("click", () => inject($("text").value.trim()));
-$("clear").addEventListener("click", () => fetch("/scanner/inject", {method:"POST", body: ""}).then(() => setStatus("queue cleared", true)));
+$("clear").addEventListener("click", () =>
+  fetch("/scanner/inject", { method: "POST", body: "", headers: INJECT_HEADERS })
+    .then(() => setStatus("queue cleared", true)));
 
 let stream = null, raf = null;
 async function startCam() {
@@ -344,6 +350,28 @@ void start_server() {
         res.set_content(kScannerHtml, "text/html");
     });
     g_srv->Post("/scanner/inject", [](const httplib::Request& req, httplib::Response& res) {
+        // CSRF defense: require a custom header that a malicious cross-origin
+        // page can't add via a simple form submission. Browsers will do a
+        // CORS preflight (OPTIONS) for any request that carries a custom
+        // header, and we never respond to that preflight with
+        // Access-Control-Allow-* so the preflight fails and the real POST
+        // never goes out. Same-origin requests from /scanner work because
+        // they're not subject to CORS preflight rules.
+        if (req.get_header_value("X-BoardGhost-Devtools") != "1") {
+            res.status = 403;
+            res.set_content("missing X-BoardGhost-Devtools header", "text/plain");
+            return;
+        }
+        // Belt-and-braces Origin check. Reject anything that isn't our own
+        // localhost binding.
+        auto origin = req.get_header_value("Origin");
+        if (!origin.empty() &&
+            origin.find("http://127.0.0.1:") != 0 &&
+            origin.find("http://localhost:")  != 0) {
+            res.status = 403;
+            res.set_content("bad origin", "text/plain");
+            return;
+        }
         auto qpath = project_state_dir() / "uart-2-queue.bin";
         std::error_code ec;
         fs::create_directories(qpath.parent_path(), ec);
@@ -362,7 +390,11 @@ void start_server() {
             "text/html");
     });
 
-    if (!g_srv->bind_to_port("0.0.0.0", port)) {
+    // Bind to localhost only — devtools is dev-only and the POST endpoint
+    // mutates sketch I/O. The sketch's own WebServer (sim_webserver.cpp)
+    // intentionally binds 0.0.0.0 because it's meant to be LAN-reachable;
+    // devtools has the opposite contract.
+    if (!g_srv->bind_to_port("127.0.0.1", port)) {
         std::fprintf(stderr,
             "[boardghost] devtools: bind to port %u failed — receipt/scanner UIs unavailable\n",
             port);
