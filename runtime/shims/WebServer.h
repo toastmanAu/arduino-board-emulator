@@ -2,8 +2,16 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
 #include "WString.h"
 #include "WiFi.h"
+
+// Forward-decl so the public header doesn't drag cpp-httplib into every TU
+// that #includes WebServer.h. The .cpp implementation does the real work.
+namespace boardghost_internal { class WebServerImpl; }
 
 // HTTP method constants — match ESP32 Arduino core values where it matters
 // (mostly for `case HTTP_GET:` style switches).
@@ -45,68 +53,65 @@ public:
 
 class WebServer {
 public:
-    explicit WebServer(uint16_t port = 80) : port_(port) {}
+    explicit WebServer(uint16_t port = 80);
+    ~WebServer();
 
     using THandlerFunction         = std::function<void(void)>;
     using THandlerFunctionUpload   = std::function<void(void)>;
 
-    void begin()                                              {}
-    void begin(uint16_t /*port*/)                             {}
-    void stop()                                               {}
-    void close()                                              {}
-    void handleClient()                                       {}
+    void begin();
+    void begin(uint16_t port);
+    void stop();
+    void close();
+    // No-op: cpp-httplib drives requests on its own thread. The sketch can
+    // still call this from loop() to match ESP32 API; it does nothing.
+    void handleClient() {}
 
-    void on(const char* /*uri*/, THandlerFunction /*handler*/) {}
-    void on(const char* /*uri*/, HTTPMethod /*method*/,
-            THandlerFunction /*handler*/)                       {}
-    void on(const char* /*uri*/, HTTPMethod /*method*/,
-            THandlerFunction /*handler*/,
-            THandlerFunctionUpload /*upload*/)                  {}
-    void onNotFound(THandlerFunction /*handler*/)              {}
-    void onFileUpload(THandlerFunctionUpload /*handler*/)      {}
+    void on(const char* uri, THandlerFunction handler);
+    void on(const char* uri, HTTPMethod method, THandlerFunction handler);
+    void on(const char* uri, HTTPMethod method, THandlerFunction handler,
+            THandlerFunctionUpload upload);
+    void onNotFound(THandlerFunction handler);
+    void onFileUpload(THandlerFunctionUpload handler);
 
-    void send(int /*code*/)                                    {}
-    void send(int /*code*/, const char* /*content_type*/,
-              const String& /*content*/ = String())             {}
-    void send(int /*code*/, const String& /*content_type*/,
-              const String& /*content*/)                        {}
-    void send(int /*code*/, const char* /*content_type*/,
-              const char* /*content*/)                          {}
-    void send_P(int /*code*/, const char* /*content_type*/,
-                const char* /*content*/)                        {}
-    void sendHeader(const String& /*name*/, const String& /*value*/,
-                    bool /*first*/ = false)                     {}
-    void sendContent(const String& /*content*/)                 {}
+    void send(int code);
+    void send(int code, const char* content_type, const String& content = String());
+    void send(int code, const String& content_type, const String& content);
+    void send(int code, const char* content_type, const char* content);
+    void send_P(int code, const char* content_type, const char* content);
+    void sendHeader(const String& name, const String& value, bool first = false);
+    void sendContent(const String& content);
 
-    String arg(const char* /*name*/) const                     { return String(); }
-    String arg(int /*i*/) const                                { return String(); }
-    String argName(int /*i*/) const                            { return String(); }
-    int    args() const                                        { return 0; }
-    bool   hasArg(const char* /*name*/) const                  { return false; }
-    String header(const char* /*name*/) const                  { return String(); }
-    String header(int /*i*/) const                             { return String(); }
-    String headerName(int /*i*/) const                         { return String(); }
-    int    headers() const                                     { return 0; }
-    bool   hasHeader(const char* /*name*/) const               { return false; }
-    String hostHeader() const                                  { return String(); }
-    String uri() const                                         { return String(); }
-    HTTPMethod method() const                                  { return HTTP_GET; }
+    String arg(const char* name) const;
+    String arg(int i) const;
+    String argName(int i) const;
+    int    args() const;
+    bool   hasArg(const char* name) const;
+    String header(const char* name) const;
+    String header(int i) const;
+    String headerName(int i) const;
+    int    headers() const;
+    bool   hasHeader(const char* name) const;
+    String hostHeader() const;
+    String uri() const;
+    HTTPMethod method() const;
     HTTPUpload& upload()                                       { return upload_; }
     WebServerClient client()                                   { return WebServerClient(); }
 
-    void collectHeaders(const char* /*headerKeys*/[], const size_t /*headerKeysCount*/) {}
+    // Headers the sketch wants exposed via header()/headerName(). cpp-httplib
+    // surfaces all headers anyway so this just records which keys the sketch
+    // is interested in — we don't filter on the server side.
+    void collectHeaders(const char* headerKeys[], const size_t headerKeysCount);
 
-    // streamFile — read the entire file and send it as the response body.
-    // Templated so the caller's file type (fs::File, Stream subclass, etc.)
-    // can be passed without the header depending on FS.h. The sim accepts
-    // the call as a no-op — there's no HTTP path to write to.
     template <typename T>
     size_t streamFile(T& /*file*/, const String& /*contentType*/) { return 0; }
-    void enableCORS(bool /*enable*/ = true)                    {}
-    void enableCrossOrigin(bool /*enable*/ = true)             {}
+
+    void enableCORS(bool enable = true);
+    void enableCrossOrigin(bool enable = true)                 { enableCORS(enable); }
     void enableDelay(bool /*enable*/)                          {}
 
 private:
-    uint16_t   port_;
-    HTTPUpload upload_;
+    uint16_t                                          port_;
+    HTTPUpload                                        upload_;
+    std::unique_ptr<boardghost_internal::WebServerImpl> impl_;
 };
