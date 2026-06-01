@@ -1,6 +1,13 @@
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+// Must match the destination used by `build::run` when mirroring the sketch
+// `data/` dir — see spiffs_mirror::mirror_sketch_data. Kept in one place so the
+// CLI's env var and the build stage can't drift apart.
+pub(crate) fn assets_dir_for(project_dir: &Path) -> PathBuf {
+    project_dir.join(".boardghost").join("sim-assets")
+}
 
 pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option<&Path>) -> Result<i32> {
     let mut cmd = Command::new(binary);
@@ -18,7 +25,7 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
         let proj_abs = proj.canonicalize().unwrap_or_else(|_| proj.to_path_buf());
         // Only set if not already in the environment (allow user override).
         if std::env::var("BOARDGHOST_ASSETS_DIR").is_err() {
-            cmd.env("BOARDGHOST_ASSETS_DIR", proj_abs.join("sim-assets"));
+            cmd.env("BOARDGHOST_ASSETS_DIR", assets_dir_for(&proj_abs));
         }
         if std::env::var("BOARDGHOST_EEPROM_PATH").is_err() {
             cmd.env("BOARDGHOST_EEPROM_PATH",
@@ -67,4 +74,20 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
 
     let status = child.wait()?;
     Ok(status.code().unwrap_or(-1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Pins the BOARDGHOST_ASSETS_DIR computation against the build stage's
+    // mirror destination so they can never silently drift again. If you change
+    // either side, change both — and update this test.
+    #[test]
+    fn assets_dir_matches_build_mirror_root() {
+        let project = Path::new("/proj");
+        let out_root = project.join(".boardghost").join("ili9488_esp32s3_sim");
+        let build_mirror_root = out_root.parent().unwrap().join("sim-assets");
+        assert_eq!(assets_dir_for(project), build_mirror_root);
+    }
 }
