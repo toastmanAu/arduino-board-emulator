@@ -61,10 +61,18 @@ struct Port {
     // sketch's triggerScanner response-comparison loop sees a clean 7-byte
     // match, then once rx_buf is empty (sketch finished reading ACK) we
     // release pre-queued scan bytes into rx_buf so the main barcode loop
-    // picks them up. Without this two-phase release the ACK and scan would
-    // appear in the same read, and the sketch would treat the scan bytes
-    // as bogus trailing ACK bytes and reject the trigger.
+    // picks them up in a SEPARATE read-loop iteration.
+    //
+    // Two-step release: when pump() first sees rx_buf empty + delayed_rx
+    // non-empty, it sets `delayed_rx_armed` and returns size 0. That makes
+    // the sketch's `while (available() > 0)` loop exit cleanly. The NEXT
+    // pump() call (i.e. the next sketch poll) sees the armed flag and
+    // releases delayed_rx into rx_buf as a fresh read. Without the cooldown
+    // the release would fire mid-loop and the sketch would consume ACK +
+    // scan as one stream — exactly the "Byte Mismatch" bug this comment
+    // was born from.
     std::deque<uint8_t> delayed_rx;
+    bool                delayed_rx_armed = false;
 };
 
 std::array<Port, kMaxPorts> g_ports;
@@ -198,11 +206,20 @@ size_t pump(int port_nr) {
         }
     }
     if (p.rx_buf.empty() && !p.delayed_rx.empty()) {
-        // Release all staged bytes at once — the sketch's barcode handler
-        // reads in a single while-available loop, and we want the whole scan
-        // to land in one batch so SCAN_RESULT[] gets the contiguous bytes.
+        if (!p.delayed_rx_armed) {
+            // First time we see rx_buf empty after staging — arm the
+            // release but don't fire yet. Returning 0 here makes the
+            // sketch's `while (available() > 0)` loop exit, so when we DO
+            // release on the next call the bytes appear as a fresh read.
+            p.delayed_rx_armed = true;
+            return 0;
+        }
+        // Second call — sketch has finished its previous read loop and
+        // is polling again. Now release the whole staged scan in one
+        // batch so SCAN_RESULT[] captures contiguous bytes.
         for (auto b : p.delayed_rx) p.rx_buf.push_back(b);
         p.delayed_rx.clear();
+        p.delayed_rx_armed = false;
     }
     return p.rx_buf.size();
 }
