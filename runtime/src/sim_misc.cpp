@@ -2,16 +2,14 @@
 // a single translation unit to host their `extern`-declared singletons
 // (MDNS, Update). Kept in one file to avoid sim_xxxx.cpp sprawl per shim.
 
-#include "Update.h"
 #include "Arduino.h"
 
 #include <cstdio>
 #include <cstdlib>
 
-// MDNS instance is defined in sim_mdns.cpp — it carries non-trivial state
-// (child PIDs of avahi-publish subprocesses) so doesn't fit the
-// header-only-no-op pattern this file is for.
-UpdateClass   Update;
+// MDNS instance lives in sim_mdns.cpp; Update lives in sim_update.cpp —
+// both carry non-trivial state and don't fit this file's
+// header-only-no-op pattern.
 ESPClass      ESP;
 
 // ESP.restart() on real hardware reboots the chip. In the sim we exit with a
