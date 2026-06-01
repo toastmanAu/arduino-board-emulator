@@ -41,7 +41,7 @@ fn main() -> Result<()> {
 
 fn uart(action: UartAction) -> Result<()> {
     match action {
-        UartAction::Inject { project, port, crlf, text, hex } => {
+        UartAction::Inject { project, port, crlf, text, hex, queue } => {
             let bytes: Vec<u8> = if hex {
                 // Strip whitespace then parse hex pairs; helpful for modem
                 // protocols where you paste a wireshark dump.
@@ -58,6 +58,32 @@ fn uart(action: UartAction) -> Result<()> {
                 if crlf { v.extend_from_slice(b"\r\n"); }
                 v
             };
+            if queue {
+                // Stage for next-trigger delivery. The runtime's GM861S
+                // emulator drains this file into delayed_rx whenever the
+                // sketch fires a start-trigger; the bytes then surface in
+                // rx_buf after the trigger ACK has been read. Removes the
+                // 10-second timing pressure entirely — queue first, click
+                // the trigger UI whenever you're ready.
+                let qpath = project.join(".boardghost")
+                    .join(format!("uart-{port}-queue.bin"));
+                if let Some(parent) = qpath.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                // Truncate-and-write: each invocation replaces the staged
+                // scan, since a scanner only fires one barcode per trigger.
+                let mut f = std::fs::OpenOptions::new()
+                    .write(true).create(true).truncate(true)
+                    .open(&qpath)?;
+                f.write_all(&bytes)?;
+                f.flush()?;
+                eprintln!(
+                    "Queued {} byte(s) for UART{port} — will fire on the next \
+                    scanner trigger (click the scanner activate UI to release).",
+                    bytes.len()
+                );
+                return Ok(());
+            }
             let fifo = project.join(".boardghost")
                 .join(format!("uart-{port}-in.fifo"));
             if !fifo.exists() {

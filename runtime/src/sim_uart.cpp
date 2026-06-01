@@ -56,6 +56,15 @@ struct Port {
     bool                opened = false;
     Peripheral          peripheral = Peripheral::None;
     std::deque<uint8_t> write_history;  // sliding window of recent outbound bytes
+    // Bytes staged for delivery AFTER the sketch drains the current rx_buf.
+    // Used by the GM861S emulator: the trigger ACK lands in rx_buf so the
+    // sketch's triggerScanner response-comparison loop sees a clean 7-byte
+    // match, then once rx_buf is empty (sketch finished reading ACK) we
+    // release pre-queued scan bytes into rx_buf so the main barcode loop
+    // picks them up. Without this two-phase release the ACK and scan would
+    // appear in the same read, and the sketch would treat the scan bytes
+    // as bogus trailing ACK bytes and reject the trigger.
+    std::deque<uint8_t> delayed_rx;
 };
 
 std::array<Port, kMaxPorts> g_ports;
@@ -66,32 +75,38 @@ std::array<Port, kMaxPorts> g_ports;
 // model — the real ckb_pos sketch doesn't read for one either.
 constexpr uint8_t kGm861sTriggerAck[] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
 
-// Look back over the last N outbound bytes for a complete GM861S command
-// frame. Returns the number of bytes consumed (0 if no frame matched).
-// Recognized frames: trigger and stop-trigger, both 9 bytes ending 0xAB 0xCD.
-size_t maybe_match_gm861s(std::deque<uint8_t>& hist, std::deque<uint8_t>& rx_out) {
+// Match result: number of bytes consumed from the history and whether
+// the matched frame was a start-trigger (which should fire any staged
+// queue scan). Stop-trigger is acknowledged but doesn't fire the queue.
+struct Gm861sMatch {
+    size_t consumed         = 0;
+    bool   fire_queue       = false;
+};
+
+Gm861sMatch maybe_match_gm861s(std::deque<uint8_t>& hist, std::deque<uint8_t>& rx_out) {
     // GM861S commands are 9 bytes: 7E 00 LL CC ... AB CD.
-    if (hist.size() < 9) return 0;
-    // Walk forward looking for the 0x7E header that starts a 9-byte frame.
+    if (hist.size() < 9) return {};
     for (size_t start = 0; start + 9 <= hist.size(); ++start) {
         if (hist[start] != 0x7E) continue;
         if (hist[start + 7] != 0xAB || hist[start + 8] != 0xCD) continue;
-        // Bytes 3 = command type (0x01=trigger), 5 = subcmd (0x02=software),
-        // 6 = action (0x01=start, 0x00=stop). Only respond when the frame
-        // is a trigger command — other shapes pass through silently.
-        if (hist[start + 3] == 0x01 && hist[start + 5] == 0x02 &&
-            (hist[start + 6] == 0x00 || hist[start + 6] == 0x01)) {
+        // Byte 3 = command type (0x01=trigger), 5 = subcmd (0x02=software),
+        // 6 = action (0x01=start, 0x00=stop). Other frame shapes (setBaud
+        // etc.) pass through silently — the real sketch doesn't read an
+        // ACK for those either.
+        bool is_trigger_frame =
+            hist[start + 3] == 0x01 && hist[start + 5] == 0x02 &&
+            (hist[start + 6] == 0x00 || hist[start + 6] == 0x01);
+        if (is_trigger_frame) {
             for (auto b : kGm861sTriggerAck) rx_out.push_back(b);
         }
-        // Consume everything up to and including the matched frame, drop
-        // any garbage bytes that appeared before the header.
-        return start + 9;
+        bool is_start_trigger = is_trigger_frame && hist[start + 6] == 0x01;
+        return {start + 9, is_start_trigger};
     }
     // No header found yet — if the history is overflowing without a match
-    // (16+ bytes and still no 0x7E in position 0), drop a byte so we don't
-    // accumulate forever.
-    if (hist.size() > 32) return 1;
-    return 0;
+    // (32+ bytes and still no 0x7E in a valid position), drop a byte so
+    // we don't accumulate forever.
+    if (hist.size() > 32) return {1, false};
+    return {};
 }
 
 Peripheral parse_peripheral_env(int port_nr) {
@@ -167,16 +182,49 @@ void ensure_open(int port_nr) {
 // Pump bytes from the FIFO into the rx_buf. Non-blocking — returns the new
 // rx_buf size. Called from available()/read() so latency is "next sketch
 // poll" rather than requiring a background thread.
+//
+// Two-phase delivery: when delayed_rx has staged bytes (post-trigger scan
+// data), they're only released into rx_buf once rx_buf is empty. This keeps
+// the trigger ACK and the scan payload in separate reads on the sketch
+// side — see the comment on Port::delayed_rx for why that matters.
 size_t pump(int port_nr) {
     Port& p = g_ports[port_nr];
-    if (p.fifo_fd < 0) return p.rx_buf.size();
-    uint8_t tmp[1024];
-    while (true) {
-        ssize_t r = ::read(p.fifo_fd, tmp, sizeof(tmp));
-        if (r <= 0) break;
-        for (ssize_t i = 0; i < r; ++i) p.rx_buf.push_back(tmp[i]);
+    if (p.fifo_fd >= 0) {
+        uint8_t tmp[1024];
+        while (true) {
+            ssize_t r = ::read(p.fifo_fd, tmp, sizeof(tmp));
+            if (r <= 0) break;
+            for (ssize_t i = 0; i < r; ++i) p.rx_buf.push_back(tmp[i]);
+        }
+    }
+    if (p.rx_buf.empty() && !p.delayed_rx.empty()) {
+        // Release all staged bytes at once — the sketch's barcode handler
+        // reads in a single while-available loop, and we want the whole scan
+        // to land in one batch so SCAN_RESULT[] gets the contiguous bytes.
+        for (auto b : p.delayed_rx) p.rx_buf.push_back(b);
+        p.delayed_rx.clear();
     }
     return p.rx_buf.size();
+}
+
+// Look for a staged scan in <project>/.boardghost/uart-N-queue.bin and, if
+// non-empty, atomically move its contents into delayed_rx. The file is
+// truncated after — each click of the scanner-trigger fires exactly one
+// staged scan. Called whenever the GM861S emulator ACKs a trigger.
+void drain_queue_file(int port_nr, Port& p) {
+    auto base = project_state_dir();
+    std::string path = (base / ("uart-" + std::to_string(port_nr) + "-queue.bin")).string();
+    int fd = ::open(path.c_str(), O_RDWR);
+    if (fd < 0) return;  // no queued scan, no problem
+    uint8_t tmp[4096];
+    while (true) {
+        ssize_t r = ::read(fd, tmp, sizeof(tmp));
+        if (r <= 0) break;
+        for (ssize_t i = 0; i < r; ++i) p.delayed_rx.push_back(tmp[i]);
+    }
+    // Truncate so the next trigger doesn't replay the same scan.
+    ::ftruncate(fd, 0);
+    ::close(fd);
 }
 
 }  // namespace
@@ -250,14 +298,17 @@ size_t HardwareSerial::write(const uint8_t* buf, size_t len) {
     if (p.peripheral != Peripheral::None && buf && len > 0) {
         std::lock_guard<std::mutex> lk(p.mtx);
         for (size_t i = 0; i < len; ++i) p.write_history.push_back(buf[i]);
-        // Drain matched frames until nothing more matches.
         while (true) {
-            size_t consumed = 0;
+            Gm861sMatch m;
             if (p.peripheral == Peripheral::Gm861s) {
-                consumed = maybe_match_gm861s(p.write_history, p.rx_buf);
+                m = maybe_match_gm861s(p.write_history, p.rx_buf);
             }
-            if (consumed == 0) break;
-            for (size_t i = 0; i < consumed; ++i) p.write_history.pop_front();
+            if (m.consumed == 0) break;
+            for (size_t i = 0; i < m.consumed; ++i) p.write_history.pop_front();
+            // Start-trigger fires any staged scan from the queue file.
+            // Scan bytes go into delayed_rx so they're delivered AFTER the
+            // sketch consumes the trigger ACK that's already in rx_buf.
+            if (m.fire_queue) drain_queue_file(n, p);
         }
     }
     return len;  // pretend success so sketches don't loop on send errors

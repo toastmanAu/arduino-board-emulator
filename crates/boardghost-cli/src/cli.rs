@@ -71,6 +71,14 @@ pub enum UartAction {
         /// Interpret `text` as hex pairs (e.g. "7e00080200" instead of ASCII).
         #[arg(long, default_value_t = false)]
         hex: bool,
+        /// Stage the bytes for delivery on the *next* scanner trigger
+        /// instead of writing to the FIFO immediately. Solves the
+        /// "trigger window is only 10 seconds" timing pressure — pre-queue
+        /// at your own pace, click the trigger UI, the scan fires.
+        /// Only meaningful when the port has a peripheral emulator
+        /// (BOARDGHOST_UART_<N>_PERIPHERAL=gm861s).
+        #[arg(long, default_value_t = false)]
+        queue: bool,
     },
 }
 
