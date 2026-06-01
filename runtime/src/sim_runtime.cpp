@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -277,15 +278,41 @@ uint32_t esp_random(void) {
     return (uint32_t)rand() ^ ((uint32_t)rand() << 16);
 }
 
-// ESP32 LEDC PWM API — no audio + fixed backlight in the sim, so all calls
-// silently succeed. Kept here so cppcheck sees a single definition rather
-// than weak-linkage placeholders.
-void ledcSetup(uint8_t /*channel*/, double /*freq*/, uint8_t /*res*/)  {}
+// ESP32 LEDC PWM API. The real chip drives a PWM signal at the configured
+// frequency/duty; sketches commonly wire this to a passive piezo and play
+// UI feedback tones. We re-create that on the host by treating each LEDC
+// channel as a square-wave generator and mixing all active channels into a
+// single SDL audio stream — the host's speakers become the sketch's piezo.
+//
+// Set BOARDGHOST_SOUND=off to disable (e.g. CI, shared workspaces).
+extern void boardghost_ledc_set_tone(uint8_t channel, double freq_hz);
+extern void boardghost_ledc_set_duty(uint8_t channel, uint32_t duty, uint8_t max_bits);
+
+void ledcSetup(uint8_t channel, double freq, uint8_t res_bits) {
+    // Treat setup as "set the frequency and reset duty to 0". Sketches that
+    // call setup then writeTone get correctly re-initialised.
+    boardghost_ledc_set_tone(channel, freq);
+    boardghost_ledc_set_duty(channel, 0, res_bits);
+}
 void ledcAttachPin(uint8_t /*pin*/, uint8_t /*channel*/)               {}
 void ledcDetachPin(uint8_t /*pin*/)                                    {}
-void ledcWrite(uint8_t /*channel*/, uint32_t /*duty*/)                 {}
-void ledcWriteTone(uint8_t /*channel*/, double /*freq*/)               {}
-void ledcWriteNote(uint8_t /*channel*/, uint8_t /*note*/, uint8_t /*octave*/) {}
-uint32_t ledcRead(uint8_t /*channel*/)                                 { return 0; }
+void ledcWrite(uint8_t channel, uint32_t duty) {
+    // The ESP32 res_bits is typically 8 — duty 0..255. We don't know it
+    // here (no separate setup state cached), so assume 8 and clamp at
+    // 0..255; the audio backend just needs a "duty>0 → on" signal anyway.
+    boardghost_ledc_set_duty(channel, duty, 8);
+}
+void ledcWriteTone(uint8_t channel, double freq) {
+    boardghost_ledc_set_tone(channel, freq);
+}
+void ledcWriteNote(uint8_t channel, uint8_t note, uint8_t octave) {
+    // Equal temperament: note = semitones from A4 (440 Hz). ESP32 numbers
+    // notes 0..11 = C..B, so semitones from A is (note - 9) and octave
+    // shift is 2^(octave-4) relative to A4.
+    int semitones = (int)note - 9 + ((int)octave - 4) * 12;
+    double freq = 440.0 * std::pow(2.0, semitones / 12.0);
+    boardghost_ledc_set_tone(channel, freq);
+}
+uint32_t ledcRead(uint8_t /*channel*/) { return 0; }
 
 } // extern "C"

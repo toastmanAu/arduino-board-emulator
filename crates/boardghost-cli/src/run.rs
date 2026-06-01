@@ -31,6 +31,18 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
             cmd.env("BOARDGHOST_EEPROM_PATH",
                     proj_abs.join(".boardghost").join("eeprom.bin"));
         }
+        // UART backend writes FIFOs + capture files into <proj>/.boardghost/
+        // — same anchor as eeprom + assets. Without this, the sketch's cwd
+        // happens to be the CLI's invocation dir, which is rarely under
+        // the project tree.
+        if std::env::var("BOARDGHOST_UART_DIR").is_err() {
+            cmd.env("BOARDGHOST_UART_DIR", proj_abs.join(".boardghost"));
+        }
+        // OTA firmware lands alongside; same fix.
+        if std::env::var("BOARDGHOST_OTA_PATH").is_err() {
+            cmd.env("BOARDGHOST_OTA_PATH",
+                    proj_abs.join(".boardghost").join("ota-firmware.bin"));
+        }
     }
 
     let mut child = cmd.spawn()?;

@@ -205,11 +205,16 @@ public:
     size_t println(unsigned long v, int base);
 
     size_t printf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-    size_t write(uint8_t b);
-    size_t write(const uint8_t* buf, size_t n);
+    // virtual so HardwareSerial can route I/O through real backends
+    // (FIFOs for QR-scanner-style inputs, files for printer-style outputs)
+    // while the global `Serial` instance keeps using stdin/stdout.
+    virtual size_t write(uint8_t b);
+    virtual size_t write(const uint8_t* buf, size_t n);
 
-    int    available();
-    int    read();
+    virtual int    available();
+    virtual int    read();
+    virtual int    peek() { return -1; }
+    virtual ~SerialClass() = default;
     void   flush();
     void   setDebugOutput(bool /*enable*/) {}
 };
@@ -264,16 +269,32 @@ extern ESPClass ESP;
 // physical UART, so reads always report "no data" — preventing infinite
 // loops where the sketch polls a missing scanner forever. Writes go to the
 // sim log so the protocol bytes the sketch sends are visible.
+// HardwareSerial: real bidirectional UART backing.
+//
+// Read direction (sketch <-- peripheral, e.g. QR scanner on UART2):
+//   The shim opens a FIFO at <project>/.boardghost/uart-N-in.fifo (creating
+//   it if needed). Anything you write to that FIFO from another shell shows
+//   up as bytes the sketch reads via available()/read(). Use
+//   `boardghost uart inject --port N <text>` (or `printf '...' > .fifo`)
+//   to drive a scanner workflow.
+//
+// Write direction (sketch --> peripheral, e.g. thermal printer on UART1):
+//   All bytes the sketch writes get appended to
+//   <project>/.boardghost/uart-N-out.bin so you can `tail -f` it to see
+//   what the sketch is sending — including binary protocols like the
+//   thermal printer's ESC/POS commands.
 class HardwareSerial : public SerialClass {
 public:
     explicit HardwareSerial(int uart_nr = 0) : uart_nr_(uart_nr) {}
     int  port() const { return uart_nr_; }
 
-    // Reads — no peripheral, no data. Overrides the stdin-poll impl in
-    // SerialClass so external-UART consumers get a clean "empty buffer".
-    int  available()              { return 0; }
-    int  read()                   { return -1; }
-    int  peek()                   { return -1; }
+    int    available() override;
+    int    read() override;
+    int    peek() override;
+    int    read(uint8_t* buf, size_t n);    // ESP32 extension; not in upstream Stream
+    size_t write(uint8_t b) override;
+    size_t write(const uint8_t* buf, size_t n) override;
+
 private:
     int uart_nr_;
 };

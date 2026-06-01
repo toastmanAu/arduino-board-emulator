@@ -44,6 +44,34 @@ pub enum Command {
         #[command(subcommand)]
         action: SeedAction,
     },
+    /// Inject bytes into a sketch's HardwareSerial(N) input — drives a QR
+    /// scanner, GSM modem, or any other UART peripheral the sketch reads
+    /// from. Writes to the FIFO the runtime listens on, then exits.
+    Uart {
+        #[command(subcommand)]
+        action: UartAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum UartAction {
+    /// Send a string (plus optional \r\n) to the sketch's HardwareSerial(N).
+    /// Default is port 2 (matches the QR-scanner convention on ESP32).
+    Inject {
+        #[arg(value_name = "PROJECT_DIR")]
+        project: PathBuf,
+        /// Which UART the sketch is listening on (HardwareSerial(N)).
+        #[arg(long, default_value_t = 2u8)]
+        port: u8,
+        /// Append CR+LF after the text (most barcode scanners do this).
+        #[arg(long, default_value_t = true)]
+        crlf: bool,
+        /// The text to inject. Use --hex for binary protocols (modems etc.).
+        text: String,
+        /// Interpret `text` as hex pairs (e.g. "7e00080200" instead of ASCII).
+        #[arg(long, default_value_t = false)]
+        hex: bool,
+    },
 }
 
 #[derive(Subcommand)]

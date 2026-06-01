@@ -2,7 +2,8 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-use boardghost::{cli::{Cli, Command, BuildProfile, SeedAction}, eeprom_seed, BoardProfile};
+use boardghost::{cli::{Cli, Command, BuildProfile, SeedAction, UartAction}, eeprom_seed, BoardProfile};
+use std::io::Write;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -34,6 +35,48 @@ fn main() -> Result<()> {
             std::process::exit(code);
         }
         Command::Seed { action } => seed(action),
+        Command::Uart { action } => uart(action),
+    }
+}
+
+fn uart(action: UartAction) -> Result<()> {
+    match action {
+        UartAction::Inject { project, port, crlf, text, hex } => {
+            let bytes: Vec<u8> = if hex {
+                // Strip whitespace then parse hex pairs; helpful for modem
+                // protocols where you paste a wireshark dump.
+                let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                if cleaned.len() % 2 != 0 {
+                    anyhow::bail!("--hex needs an even number of digits, got {} chars", cleaned.len());
+                }
+                (0..cleaned.len()).step_by(2)
+                    .map(|i| u8::from_str_radix(&cleaned[i..i+2], 16))
+                    .collect::<std::result::Result<_, _>>()
+                    .map_err(|e| anyhow::anyhow!("invalid hex: {e}"))?
+            } else {
+                let mut v = text.into_bytes();
+                if crlf { v.extend_from_slice(b"\r\n"); }
+                v
+            };
+            let fifo = project.join(".boardghost")
+                .join(format!("uart-{port}-in.fifo"));
+            if !fifo.exists() {
+                anyhow::bail!(
+                    "FIFO {} doesn't exist yet — start the sketch first, the runtime creates the FIFO on the first HardwareSerial({port}) call",
+                    fifo.display()
+                );
+            }
+            // Open in write-only mode; the runtime opened it O_NONBLOCK read,
+            // so this won't block waiting for a reader.
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&fifo)
+                .map_err(|e| anyhow::anyhow!("open {} for write failed: {e}", fifo.display()))?;
+            f.write_all(&bytes)?;
+            f.flush()?;
+            eprintln!("Injected {} byte(s) into UART{port}", bytes.len());
+            Ok(())
+        }
     }
 }
 
