@@ -38,15 +38,73 @@ namespace {
 
 constexpr int kMaxPorts = 8;
 
+// Per-port "virtual peripheral" for protocols where the sketch expects a
+// specific ACK after writing a command frame — without it, the sketch
+// retries / times out and never enters its run-loop. Currently only the
+// GROW GM861S barcode scanner is implemented (ckb_pos's UART2 device); the
+// hook lets other peripherals be added without rewriting Port plumbing.
+//
+// Selected via BOARDGHOST_UART_<N>_PERIPHERAL=gm861s (default off → silent
+// drops, original behaviour).
+enum class Peripheral { None, Gm861s };
+
 struct Port {
-    int               fifo_fd = -1;
-    int               out_fd  = -1;
+    int                 fifo_fd = -1;
+    int                 out_fd  = -1;
     std::deque<uint8_t> rx_buf;
     std::mutex          mtx;
     bool                opened = false;
+    Peripheral          peripheral = Peripheral::None;
+    std::deque<uint8_t> write_history;  // sliding window of recent outbound bytes
 };
 
 std::array<Port, kMaxPorts> g_ports;
+
+// The GM861S replies to both 0x7E…02 01 (start trigger) and 0x7E…02 00
+// (stop trigger) with the same 7-byte success ACK. Other commands the
+// sketch sends (setBaud, setCommandTriggerMode) get no reply in this
+// model — the real ckb_pos sketch doesn't read for one either.
+constexpr uint8_t kGm861sTriggerAck[] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
+
+// Look back over the last N outbound bytes for a complete GM861S command
+// frame. Returns the number of bytes consumed (0 if no frame matched).
+// Recognized frames: trigger and stop-trigger, both 9 bytes ending 0xAB 0xCD.
+size_t maybe_match_gm861s(std::deque<uint8_t>& hist, std::deque<uint8_t>& rx_out) {
+    // GM861S commands are 9 bytes: 7E 00 LL CC ... AB CD.
+    if (hist.size() < 9) return 0;
+    // Walk forward looking for the 0x7E header that starts a 9-byte frame.
+    for (size_t start = 0; start + 9 <= hist.size(); ++start) {
+        if (hist[start] != 0x7E) continue;
+        if (hist[start + 7] != 0xAB || hist[start + 8] != 0xCD) continue;
+        // Bytes 3 = command type (0x01=trigger), 5 = subcmd (0x02=software),
+        // 6 = action (0x01=start, 0x00=stop). Only respond when the frame
+        // is a trigger command — other shapes pass through silently.
+        if (hist[start + 3] == 0x01 && hist[start + 5] == 0x02 &&
+            (hist[start + 6] == 0x00 || hist[start + 6] == 0x01)) {
+            for (auto b : kGm861sTriggerAck) rx_out.push_back(b);
+        }
+        // Consume everything up to and including the matched frame, drop
+        // any garbage bytes that appeared before the header.
+        return start + 9;
+    }
+    // No header found yet — if the history is overflowing without a match
+    // (16+ bytes and still no 0x7E in position 0), drop a byte so we don't
+    // accumulate forever.
+    if (hist.size() > 32) return 1;
+    return 0;
+}
+
+Peripheral parse_peripheral_env(int port_nr) {
+    char key[40];
+    std::snprintf(key, sizeof(key), "BOARDGHOST_UART_%d_PERIPHERAL", port_nr);
+    const char* v = std::getenv(key);
+    if (!v || !*v) return Peripheral::None;
+    if (std::strcmp(v, "gm861s") == 0) return Peripheral::Gm861s;
+    std::fprintf(stderr,
+        "[boardghost] uart-%d: unknown peripheral '%s'; treating as none\n",
+        port_nr, v);
+    return Peripheral::None;
+}
 
 fs::path project_state_dir() {
     // Same anchor logic as sim_eeprom / sim_fs: when the sketch binary runs
@@ -64,6 +122,12 @@ void ensure_open(int port_nr) {
     std::lock_guard<std::mutex> lk(p.mtx);
     if (p.opened) return;
     p.opened = true;
+    p.peripheral = parse_peripheral_env(port_nr);
+    if (p.peripheral != Peripheral::None) {
+        std::fprintf(stderr,
+            "[boardghost] uart-%d: virtual peripheral=gm861s "
+            "(auto-acks trigger commands)\n", port_nr);
+    }
 
     auto base = project_state_dir();
     std::error_code ec;
@@ -175,9 +239,26 @@ size_t HardwareSerial::write(const uint8_t* buf, size_t len) {
     if (n < 1 || n >= kMaxPorts) return SerialClass::write(buf, len);
     ensure_open(n);
     Port& p = g_ports[n];
+    // Capture the bytes to disk first so the user can tail -f the
+    // outbound stream regardless of whether a peripheral emulator
+    // consumes them.
     if (p.out_fd >= 0 && buf && len > 0) {
-        ssize_t w = ::write(p.out_fd, buf, len);
-        if (w > 0) return (size_t)w;
+        ::write(p.out_fd, buf, len);
+    }
+    // Virtual peripheral hook: feed outbound bytes into the per-port
+    // history buffer and emit any synthesised response into the rx queue.
+    if (p.peripheral != Peripheral::None && buf && len > 0) {
+        std::lock_guard<std::mutex> lk(p.mtx);
+        for (size_t i = 0; i < len; ++i) p.write_history.push_back(buf[i]);
+        // Drain matched frames until nothing more matches.
+        while (true) {
+            size_t consumed = 0;
+            if (p.peripheral == Peripheral::Gm861s) {
+                consumed = maybe_match_gm861s(p.write_history, p.rx_buf);
+            }
+            if (consumed == 0) break;
+            for (size_t i = 0; i < consumed; ++i) p.write_history.pop_front();
+        }
     }
     return len;  // pretend success so sketches don't loop on send errors
 }
