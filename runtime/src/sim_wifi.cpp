@@ -7,6 +7,7 @@
 WiFiClass WiFi;
 
 wl_status_t WiFiClass::begin(const char* /*ssid*/, const char* /*pass*/) {
+    _force_disconnected = false;
     switch (sim_net_mode()) {
         case BOARDGHOST_NET_FAKE: return WL_CONNECTED;
         case BOARDGHOST_NET_FAIL: return WL_NO_SSID_AVAIL;
@@ -15,9 +16,13 @@ wl_status_t WiFiClass::begin(const char* /*ssid*/, const char* /*pass*/) {
     return WL_DISCONNECTED;
 }
 
-int WiFiClass::disconnect(bool /*wifioff*/) { return 1; }
+int WiFiClass::disconnect(bool /*wifioff*/) {
+    _force_disconnected = true;
+    return 1;
+}
 
 wl_status_t WiFiClass::status() {
+    if (_force_disconnected) return WL_DISCONNECTED;
     switch (sim_net_mode()) {
         case BOARDGHOST_NET_FAIL: return WL_DISCONNECTED;
         default:                  return WL_CONNECTED;

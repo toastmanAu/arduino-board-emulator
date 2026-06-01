@@ -34,3 +34,19 @@ TEST(WiFiClientSecure, CompilesAndDelegates) {
     client.setInsecure();
     EXPECT_EQ(client.connect("example.com", 443), 1);
 }
+
+TEST(WiFi, DisconnectFlipsStatusSoSpinWaitTerminates) {
+    // Mirrors ckb_pos's pre-scan loop:
+    //   WiFi.disconnect();
+    //   while (WiFi.status() == WL_CONNECTED) delay(500);
+    // Before this regression test, disconnect() was a no-op so the loop
+    // spun forever in fake/real mode.
+    setenv("BOARDGHOST_NET", "fake", 1);
+    WiFi.begin("ssid", "pw");
+    EXPECT_EQ(WiFi.status(), WL_CONNECTED);
+    WiFi.disconnect();
+    EXPECT_EQ(WiFi.status(), WL_DISCONNECTED);
+    // A subsequent begin() should re-arm fake-connected state.
+    WiFi.begin("ssid", "pw");
+    EXPECT_EQ(WiFi.status(), WL_CONNECTED);
+}

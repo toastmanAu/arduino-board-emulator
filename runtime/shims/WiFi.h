@@ -128,6 +128,13 @@ public:
     // In sim's fake mode `begin()` already returns WL_CONNECTED so we just
     // re-poll status() and hand it back; in fail mode it returns FAILED.
     wl_status_t      waitForConnectResult(unsigned long /*timeout_ms*/ = 60000UL) { return status(); }
+
+    // Sketches like ckb_pos call WiFi.disconnect() then spin
+    //   `while (WiFi.status() == WL_CONNECTED) delay(500);`
+    // before scanning. status() is otherwise mode-derived (always CONNECTED
+    // in fake/real mode), so without this flag the loop never exits.
+    // begin() clears the flag so a re-connect goes back to mode behaviour.
+    bool _force_disconnected = false;
 };
 
 extern WiFiClass WiFi;
