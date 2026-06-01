@@ -136,21 +136,11 @@ public:
             return 1;
         }
 
-        // Pump SDL events so SDL_GetMouseState reflects current state.
-        SDL_PumpEvents();
-        int mx = 0, my = 0;
-        Uint32 buttons = SDL_GetMouseState(&mx, &my);
-
-        if (!(buttons & SDL_BUTTON(SDL_BUTTON_LEFT))) return 0;
-
-        // Report panel coordinates directly; most user code calls
-        // tft.setTouchCalibration(0, panel_width-1, 0, panel_height-1)
-        // which already matches the SDL window pixel range.
-        tp[0].x    = static_cast<int16_t>(mx);
-        tp[0].y    = static_cast<int16_t>(my);
-        tp[0].size = 1;
-        tp[0].id   = 0;
-        return 1;
+        // Live mouse pickup is handled by Panel_sdl_bg::getTouchRaw — it
+        // knows the panel rotation and can inverse-rotate so the pixel under
+        // the cursor matches the value lcd.getTouch() returns. Returning 0
+        // here lets the panel fall through to that branch.
+        return 0;
     }
 
 private:

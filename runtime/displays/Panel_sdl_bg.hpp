@@ -40,10 +40,17 @@ public:
     }
 
     uint_fast8_t getTouchRaw(lgfx::touch_point_t* tp, uint_fast8_t count) override {
-        // When BOARDGHOST_SIM_TOUCHES* is set, force identity calibration so
-        // scripted coords aren't transformed by the user's hardware-tuned
-        // setTouchCalibrate() matrix.
+        // When sim-side touch injection is active, force identity calibration
+        // so simulated coords aren't transformed by the user's hardware-tuned
+        // setTouchCalibrate() matrix. AUTO_TOUCH_CAL is included because a
+        // sketch typically follows calibrateTouch() with a setTouchCalibrate()
+        // call that loads a saved hardware matrix from EEPROM — that matrix
+        // expects raw ADC values in 0..4095, but our live-mouse pickup
+        // produces pixel-space coords. Forcing identity on every read makes
+        // the pixel-space coords pass through unchanged (rotation is still
+        // applied downstream by convertRawXY).
         if (std::getenv("BOARDGHOST_SIM_TOUCHES")
+            || std::getenv("BOARDGHOST_AUTO_TOUCH_CAL")
             || !screen_taps_.empty())
         {
             float identity[6] = {1, 0, 0, 0, 1, 0};
@@ -84,9 +91,55 @@ public:
         }
 
         if (touch()) {
-            return touch()->getTouchRaw(tp, count);
+            auto n = touch()->getTouchRaw(tp, count);
+            if (n) return n;
+        } else {
+            auto n = lgfx::Panel_sdl::getTouchRaw(tp, count);
+            if (n) return n;
         }
-        return lgfx::Panel_sdl::getTouchRaw(tp, count);
+
+        // Live mouse fallback: when nothing else produced a touch this read,
+        // sample SDL_GetMouseState. The mouse coord SDL returns is in window
+        // pixels; we scale it back to panel pixels using SDL_GetWindowSize so
+        // user-resized windows (or HiDPI) still hit the right framebuffer
+        // location. Then inverse-rotate so the pixel under the cursor is what
+        // the sketch's lcd.getTouch() returns, regardless of panel rotation
+        // (and regardless of any hardware cal matrix — see identity-force).
+        if (count > 0 && tp != nullptr) {
+            SDL_PumpEvents();
+            int mx = 0, my = 0;
+            Uint32 buttons = SDL_GetMouseState(&mx, &my);
+            if (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+                if (auto* win = SDL_GetMouseFocus()) {
+                    int ww = 0, wh = 0;
+                    SDL_GetWindowSize(win, &ww, &wh);
+                    if (ww > 0 && _width > 0)  mx = (int)((int64_t)mx * _width  / ww);
+                    if (wh > 0 && _height > 0) my = (int)((int64_t)my * _height / wh);
+                }
+                inverse_rotate(mx, my, tp[0]);
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    // Public so tests can pin the rotation math without driving SDL.
+    // Order mirrors the screen_taps branch above — it's the validated inverse
+    // of convertRawXY's rotation step. Don't reorder without re-deriving.
+    void inverse_rotate(int mx, int my, lgfx::touch_point_t& out) const {
+        auto r = compute_effective_rotation();
+        int16_t rx = (int16_t)mx;
+        int16_t ry = (int16_t)my;
+        bool vflip = (1 << r) & 0b10010110;
+        if (r) {
+            if (vflip)  ry = (int16_t)((_height - 1) - ry);
+            if (r & 2)  rx = (int16_t)((_width  - 1) - rx);
+            if (r & 1)  std::swap(rx, ry);
+        }
+        out.x = rx;
+        out.y = ry;
+        out.size = 1;
+        out.id = 0;
     }
 
 private:
