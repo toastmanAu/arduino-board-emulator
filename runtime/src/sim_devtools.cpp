@@ -256,7 +256,17 @@ const char* kScannerHtml = R"HTML(<!DOCTYPE html>
   .status.ok   { background: #1a3; color: #fff; }
   .status.err  { background: #a31; color: #fff; }
   .camera { margin-top: 20px; }
-  video { width: 100%; max-width: 320px; background: #000; border-radius: 4px; display: block; margin: 0 auto; }
+  .cam-wrap { position: relative; max-width: 480px; margin: 0 auto; }
+  video { width: 100%; background: #000; border-radius: 4px; display: block; }
+  .reticle { position: absolute; inset: 0; pointer-events: none;
+             display: flex; align-items: center; justify-content: center; }
+  .reticle .box { width: 60%; aspect-ratio: 1; border: 2px solid #2a6;
+                  border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.35); }
+  .scanning .reticle .box { border-color: #fc3; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { border-color: #fff; } }
+  .upload-zone { margin-top: 12px; padding: 14px; border: 2px dashed #444; border-radius: 4px;
+                 text-align: center; color: #888; font-size: 12px; cursor: pointer; }
+  .upload-zone.dragover { border-color: #2a6; color: #ccc; }
   canvas { display: none; }
   footer { color: #555; font-size: 11px; text-align: center; margin-top: 16px; }
 </style>
@@ -275,11 +285,18 @@ const char* kScannerHtml = R"HTML(<!DOCTYPE html>
 
   <div class="camera">
     <h1>Camera capture</h1>
-    <p style="font-size:12px;color:#888">Show a QR code to your USB camera — it'll auto-detect, fill the text box, and inject.</p>
+    <p style="font-size:12px;color:#888">Show a QR code to your camera — auto-detects, fills the text box, injects. Hold it in the green box ~10-20cm away.</p>
     <button id="start-cam">Start camera</button>
     <button id="stop-cam" class="secondary">Stop</button>
-    <video id="video" playsinline autoplay muted></video>
+    <div class="cam-wrap" id="cam-wrap">
+      <video id="video" playsinline autoplay muted></video>
+      <div class="reticle"><div class="box"></div></div>
+    </div>
     <canvas id="canvas"></canvas>
+    <div id="upload-zone" class="upload-zone">
+      Or drop a QR image here (or click) — works when the camera can't focus
+      <input type="file" id="file-input" accept="image/*" style="display:none">
+    </div>
   </div>
 </div>
 <footer>BoardGhost scanner devtools · UART2 queue</footer>
@@ -317,8 +334,19 @@ $("clear").addEventListener("click", () =>
 let stream = null, raf = null;
 async function startCam() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    // Ask for the highest resolution the host camera can give — jsQR
+    // detection rate improves dramatically with pixel density. Falls back
+    // to whatever's available if 1920x1080 isn't supported.
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width:  { ideal: 1920, min: 640 },
+        height: { ideal: 1080, min: 480 },
+        frameRate: { ideal: 30, min: 15 }
+      }
+    });
     $("video").srcObject = stream;
+    $("cam-wrap").classList.add("scanning");
     raf = requestAnimationFrame(scan);
   } catch (e) { setStatus("camera failed: " + e.message, false); }
 }
@@ -326,18 +354,33 @@ function stopCam() {
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   $("video").srcObject = null;
+  $("cam-wrap").classList.remove("scanning");
+}
+// Try jsQR on full frame, then on a center crop. The crop helps when the
+// QR is centred in the reticle but small in frame — jsQR's locator runs
+// faster on tighter regions and is less likely to misidentify finder
+// patterns from background noise.
+function tryDecode(ctx, w, h) {
+  const full = ctx.getImageData(0, 0, w, h);
+  let code = jsQR(full.data, w, h, { inversionAttempts: "attemptBoth" });
+  if (code && code.data) return code.data;
+  // Center crop: 60% of the smaller dimension, square.
+  const size = Math.floor(Math.min(w, h) * 0.6);
+  const x = Math.floor((w - size) / 2), y = Math.floor((h - size) / 2);
+  const crop = ctx.getImageData(x, y, size, size);
+  code = jsQR(crop.data, size, size, { inversionAttempts: "attemptBoth" });
+  return code && code.data ? code.data : null;
 }
 function scan() {
   const v = $("video"), c = $("canvas");
   if (v.readyState === v.HAVE_ENOUGH_DATA) {
     c.width = v.videoWidth; c.height = v.videoHeight;
-    const ctx = c.getContext("2d");
+    const ctx = c.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(v, 0, 0, c.width, c.height);
-    const img = ctx.getImageData(0, 0, c.width, c.height);
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
-    if (code && code.data) {
-      $("text").value = code.data;
-      inject(code.data);
+    const data = tryDecode(ctx, c.width, c.height);
+    if (data) {
+      $("text").value = data;
+      inject(data);
       stopCam();
       return;
     }
@@ -346,6 +389,44 @@ function scan() {
 }
 $("start-cam").addEventListener("click", startCam);
 $("stop-cam").addEventListener("click", stopCam);
+
+// File upload fallback — for when the camera just won't focus. Drop a PNG
+// of a QR (screenshot from your phone, saved from a wallet) and we decode
+// it the same way as a camera frame.
+const uploadZone = $("upload-zone");
+const fileInput = $("file-input");
+function decodeImageFile(file) {
+  if (!file || !file.type.startsWith("image/")) { setStatus("not an image file", false); return; }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const c = $("canvas");
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    const data = tryDecode(ctx, c.width, c.height);
+    if (data) {
+      $("text").value = data;
+      inject(data);
+    } else {
+      setStatus("no QR detected in image (try better lighting/contrast)", false);
+    }
+  };
+  img.onerror = () => { setStatus("couldn't load image", false); URL.revokeObjectURL(url); };
+  img.src = url;
+}
+uploadZone.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", (e) => decodeImageFile(e.target.files && e.target.files[0]));
+["dragenter", "dragover"].forEach(ev =>
+  uploadZone.addEventListener(ev, (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); }));
+["dragleave", "drop"].forEach(ev =>
+  uploadZone.addEventListener(ev, (e) => { e.preventDefault(); uploadZone.classList.remove("dragover"); }));
+uploadZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  decodeImageFile(file);
+});
 </script>
 </body></html>)HTML";
 
