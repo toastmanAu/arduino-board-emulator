@@ -23,6 +23,7 @@ add_library(sim_runtime STATIC
     src/sim_fs.cpp
     src/sim_misc.cpp
     src/sim_webserver.cpp
+    src/sim_wifi_secure.cpp
     third_party/cpp-httplib/httplib.cpp
 )
 
@@ -54,6 +55,25 @@ if(BOARDGHOST_WITH_CURL)
     else()
         set(BOARDGHOST_WITH_CURL OFF CACHE BOOL "" FORCE)
         message(STATUS "BoardGhost: libcurl not found — real-net mode disabled (BOARDGHOST_NET=real will fall back to fake)")
+    endif()
+endif()
+
+# Optional OpenSSL for WiFiClientSecure (Phase 3) and HTTPS in the sketch's
+# WebServer (cpp-httplib SSLServer). Sketches that don't use either don't pay
+# the link cost — but when present, every layer that takes a TLS path will
+# use real OpenSSL.
+option(BOARDGHOST_WITH_OPENSSL "Enable TLS for WiFiClientSecure + WebServer HTTPS" ON)
+if(BOARDGHOST_WITH_OPENSSL)
+    find_package(OpenSSL QUIET)
+    if(OPENSSL_FOUND)
+        target_link_libraries(sim_runtime PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+        target_compile_definitions(sim_runtime PUBLIC
+            BOARDGHOST_WITH_OPENSSL=1
+            CPPHTTPLIB_OPENSSL_SUPPORT=1)
+        message(STATUS "BoardGhost: OpenSSL ${OPENSSL_VERSION} found — WiFiClientSecure + HTTPS enabled")
+    else()
+        set(BOARDGHOST_WITH_OPENSSL OFF CACHE BOOL "" FORCE)
+        message(STATUS "BoardGhost: OpenSSL not found — WiFiClientSecure connects via plain TCP (no encryption)")
     endif()
 endif()
 

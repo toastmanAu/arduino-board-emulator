@@ -26,11 +26,13 @@ public:
     virtual int  connect(const String& host, uint16_t port) { return connect(host.c_str(), port); }
     virtual void stop();
     virtual bool connected() const;
+    // Virtual so WiFiClientSecure can route through SSL_read / SSL_write
+    // while the rest of the Stream surface continues to dispatch correctly.
     int    available() override;
     int    read() override;
-    int    read(uint8_t* buf, size_t n) override;
-    size_t write(uint8_t b) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    virtual int    read(uint8_t* buf, size_t n) override;
+    virtual size_t write(uint8_t b) override;
+    virtual size_t write(const uint8_t* buf, size_t n) override;
     void   flush() override                            {}
     // Arduino's Stream::setTimeout is milliseconds; ESP32 sketches commonly
     // set this before reads from network streams.
