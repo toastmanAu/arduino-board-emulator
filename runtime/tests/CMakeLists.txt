@@ -30,6 +30,7 @@ add_executable(runtime_tests
     test_fs.cpp
     test_webserver.cpp
     test_wifi_secure.cpp
+    test_websockets.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 
