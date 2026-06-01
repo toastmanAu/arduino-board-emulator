@@ -30,6 +30,7 @@ add_library(sim_runtime STATIC
     src/sim_mqtt.cpp
     src/sim_audio.cpp
     src/sim_uart.cpp
+    src/sim_devtools.cpp
     third_party/cpp-httplib/httplib.cpp
 )
 

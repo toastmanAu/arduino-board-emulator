@@ -17,6 +17,7 @@
 // only HardwareSerial(N>0) routes through this backend.
 
 #include "Arduino.h"
+#include "sim_devtools.h"
 
 #include <array>
 #include <atomic>
@@ -309,6 +310,12 @@ size_t HardwareSerial::write(const uint8_t* buf, size_t len) {
     // consumes them.
     if (p.out_fd >= 0 && buf && len > 0) {
         ::write(p.out_fd, buf, len);
+    }
+    // Mirror to the devtools printer ring so the /receipt page can render
+    // a live view. Filters to port 1 inside the hook (only UART1 surfaces
+    // as a printer in v1).
+    if (buf && len > 0) {
+        boardghost_devtools_record_uart_out(n, buf, len);
     }
     // Virtual peripheral hook: feed outbound bytes into the per-port
     // history buffer and emit any synthesised response into the rx queue.
