@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-use boardghost::{cli::{Cli, Command, BuildProfile}, BoardProfile};
+use boardghost::{cli::{Cli, Command, BuildProfile, SeedAction}, eeprom_seed, BoardProfile};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -22,9 +22,34 @@ fn main() -> Result<()> {
             let runtime = runtime_dir()?;
             let release = matches!(profile, BuildProfile::Release);
             let r = boardghost::build::run_build(&project, &board, &boards, &runtime, release)?;
+            match eeprom_seed::auto_restore_if_missing(&project)? {
+                Some(seed) => eprintln!(
+                    "→ EEPROM seed: restored {} → .boardghost/eeprom.bin (live EEPROM was missing)",
+                    seed.display()
+                ),
+                None => {}
+            }
             eprintln!("→ Launching {}...", r.binary.display());
             let code = boardghost::run::exec_sketch(&r.binary, screenshot.as_deref(), Some(&project))?;
             std::process::exit(code);
+        }
+        Command::Seed { action } => seed(action),
+    }
+}
+
+fn seed(action: SeedAction) -> Result<()> {
+    match action {
+        SeedAction::Save { project, to } => {
+            let dest = to.unwrap_or_else(|| eeprom_seed::default_seed_path(&project));
+            eeprom_seed::save(&project, &dest)?;
+            println!("Saved EEPROM seed → {}", dest.display());
+            Ok(())
+        }
+        SeedAction::Restore { project, from } => {
+            let src = from.unwrap_or_else(|| eeprom_seed::default_seed_path(&project));
+            eeprom_seed::restore(&project, &src)?;
+            println!("Restored EEPROM from {} → .boardghost/eeprom.bin", src.display());
+            Ok(())
         }
     }
 }

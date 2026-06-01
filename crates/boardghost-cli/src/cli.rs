@@ -36,6 +36,38 @@ pub enum Command {
         #[arg(long, value_name = "PNG_PATH")]
         screenshot: Option<PathBuf>,
     },
+    /// Snapshot or restore a sketch's EEPROM state. Snapshot once after
+    /// completing the in-sketch setup flow; future launches auto-restore from
+    /// `<project>/eeprom.seed.bin` so the sketch boots into the configured
+    /// state instead of the cold-start onboarding path.
+    Seed {
+        #[command(subcommand)]
+        action: SeedAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SeedAction {
+    /// Copy the live `.boardghost/eeprom.bin` to a seed file (default
+    /// `<project>/eeprom.seed.bin`). Fails if the sketch hasn't yet run far
+    /// enough to commit EEPROM.
+    Save {
+        #[arg(value_name = "PROJECT_DIR")]
+        project: PathBuf,
+        /// Output path. Defaults to `<project>/eeprom.seed.bin`.
+        #[arg(long, value_name = "PATH")]
+        to: Option<PathBuf>,
+    },
+    /// Copy a seed file over the live `.boardghost/eeprom.bin`, overwriting
+    /// any existing live state. Reads from `<project>/eeprom.seed.bin` by
+    /// default.
+    Restore {
+        #[arg(value_name = "PROJECT_DIR")]
+        project: PathBuf,
+        /// Input path. Defaults to `<project>/eeprom.seed.bin`.
+        #[arg(long, value_name = "PATH")]
+        from: Option<PathBuf>,
+    },
 }
 
 #[derive(Copy, Clone, Debug, clap::ValueEnum)]

@@ -12,6 +12,7 @@ pub mod codegen;
 pub mod compile;
 pub mod discover;
 pub mod doctor;
+pub mod eeprom_seed;
 pub mod error;
 pub mod libraries;
 pub mod preprocess;
