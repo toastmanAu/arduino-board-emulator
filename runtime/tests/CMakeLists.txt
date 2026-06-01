@@ -33,6 +33,7 @@ add_executable(runtime_tests
     test_websockets.cpp
     test_mdns.cpp
     test_update.cpp
+    test_mqtt.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 
