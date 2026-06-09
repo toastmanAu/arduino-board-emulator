@@ -1,0 +1,18 @@
+diff --git a/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp b/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp
+index 13b5cc5..b3c18c1 100644
+--- a/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp
++++ b/src/lgfx/v1/platforms/sdl/Panel_sdl.cpp
+@@ -105,7 +105,12 @@ namespace lgfx
+           /// L/Rキーで画面回転
+           case SDLK_r:
+           case SDLK_l:
+-            if (event.type == SDL_KEYDOWN && event.key.keysym.mod == _keymod) 
++            // BoardGhost: require Ctrl for rotate. Stock LGFX defaults to
++            // KMOD_NONE, so a bare R/L keypress flips the display 90°, which
++            // is trivial to hit accidentally — e.g. typing in any context
++            // that bubbles to the SDL window. Captured at
++            // patches/lovyangfx/0002-require-ctrl-for-rotate.patch.
++            if (event.type == SDL_KEYDOWN && (event.key.keysym.mod & KMOD_CTRL))
+             {
+               if (mon != nullptr)
+               {
