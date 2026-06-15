@@ -27,6 +27,7 @@ add_library(sim_runtime STATIC
     src/sim_websockets.cpp
     src/sim_mdns.cpp
     src/sim_update.cpp
+    src/sim_ota.cpp
     src/sim_mqtt.cpp
     src/sim_audio.cpp
     src/sim_uart.cpp
