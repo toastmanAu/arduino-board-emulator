@@ -6,8 +6,11 @@
 #include "sim_net.h"
 
 #include <arpa/inet.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/random.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -29,6 +32,7 @@ namespace boardghost_internal {
 static std::string ota_md5(const std::string& in) {
     unsigned char d[EVP_MAX_MD_SIZE]; unsigned int len = 0;
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (!ctx) return {};
     EVP_DigestInit_ex(ctx, EVP_md5(), nullptr);
     EVP_DigestUpdate(ctx, in.data(), in.size());
     EVP_DigestFinal_ex(ctx, d, &len);
@@ -116,8 +120,13 @@ public:
         if (!(iss >> cmd >> host_port >> size >> md5)) return;
         command_ = cmd;
 
+        // Save invite sender's address before auth block may overwrite `from`.
+        sockaddr_in invite_from = from;
+
         if (auth_) {
-            std::string nonce = ota_md5(std::to_string(getpid()) + ":" + std::to_string(++nonce_ctr_));
+            unsigned char rnd[16];
+            ssize_t gr = getrandom(rnd, sizeof(rnd), 0);
+            std::string nonce = ota_md5(std::string(reinterpret_cast<char*>(rnd), gr > 0 ? (size_t)gr : 0) + std::to_string(getpid()));
             std::string authreq = "AUTH " + nonce + "\n";
             ::sendto(udp_fd_, authreq.data(), authreq.size(), 0, (sockaddr*)&from, fl);
             // Await the host's response (blocking with a short timeout).
@@ -143,13 +152,32 @@ public:
 
         // Connect back to the host and pull the firmware.
         int tcp = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (tcp < 0) { fire_error(OTA_CONNECT_ERROR); return; }
         sockaddr_in h{}; h.sin_family = AF_INET; h.sin_port = htons(host_port);
-        h.sin_addr = from.sin_addr;
-        if (tcp < 0 || ::connect(tcp, (sockaddr*)&h, sizeof(h)) != 0) {
-            if (tcp >= 0) ::close(tcp);
-            fire_error(OTA_CONNECT_ERROR);
-            return;
+        h.sin_addr = invite_from.sin_addr;   // FIX 1: use saved invite sender IP
+
+        // FIX 4: non-blocking connect with 5-second timeout.
+        int cfl = fcntl(tcp, F_GETFL, 0);
+        fcntl(tcp, F_SETFL, cfl | O_NONBLOCK);
+        int cr = ::connect(tcp, (sockaddr*)&h, sizeof(h));
+        if (cr != 0) {
+            if (errno != EINPROGRESS) {
+                ::close(tcp); fire_error(OTA_CONNECT_ERROR); return;
+            }
+            fd_set wfds; FD_ZERO(&wfds); FD_SET(tcp, &wfds);
+            timeval tv_conn{5, 0};
+            int sel = ::select(tcp + 1, nullptr, &wfds, nullptr, &tv_conn);
+            if (sel <= 0) {
+                ::close(tcp); fire_error(OTA_CONNECT_ERROR); return;
+            }
+            int so_err = 0; socklen_t so_len = sizeof(so_err);
+            getsockopt(tcp, SOL_SOCKET, SO_ERROR, &so_err, &so_len);
+            if (so_err != 0) {
+                ::close(tcp); fire_error(OTA_CONNECT_ERROR); return;
+            }
         }
+        // Restore blocking mode for recv loop + SO_RCVTIMEO to work normally.
+        fcntl(tcp, F_SETFL, cfl);
 
         if (!Update.begin(size, cmd == U_SPIFFS ? U_SPIFFS : U_FLASH)) {
             ::close(tcp); fire_error(OTA_BEGIN_ERROR); return;
@@ -157,12 +185,18 @@ public:
         if (!md5.empty()) Update.setMD5(md5.c_str());
         if (on_start_) on_start_();
 
+        // FIX 3: bound recv loop so a stalled host can't hang sketch loop.
+        timeval tv_recv{30, 0};
+        setsockopt(tcp, SOL_SOCKET, SO_RCVTIMEO, &tv_recv, sizeof(tv_recv));
+
         size_t got = 0; char chunk[4096]; bool recv_ok = true;
         while (got < size) {
             ssize_t r = ::recv(tcp, chunk, sizeof(chunk), 0);
             if (r <= 0) { recv_ok = false; break; }
-            Update.write((uint8_t*)chunk, (size_t)r);
-            got += (size_t)r;
+            // FIX 5: capture write count and check for Update error.
+            size_t written = Update.write((uint8_t*)chunk, (size_t)r);
+            got += written;
+            if (Update.hasError()) { recv_ok = false; break; }
             if (on_progress_) on_progress_((unsigned)got, (unsigned)size);
         }
         if (!recv_ok) { Update.abort(); ::close(tcp); fire_error(OTA_RECEIVE_ERROR); return; }
@@ -188,7 +222,6 @@ private:
     std::string pass_md5_;
     bool        auth_     = false;
     bool        mdns_     = true;
-    unsigned    nonce_ctr_ = 0;
 };
 
 }  // namespace boardghost_internal

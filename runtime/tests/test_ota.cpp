@@ -44,6 +44,9 @@ protected:
         setenv("BOARDGHOST_MDNS", "off", 1);
     }
     void TearDown() override {
+        // FIX 9: clear callbacks to avoid dangling references between tests.
+        ArduinoOTA.onStart(nullptr); ArduinoOTA.onEnd(nullptr);
+        ArduinoOTA.onProgress(nullptr); ArduinoOTA.onError(nullptr);
         std::error_code ec; fs::remove(ota_path, ec);
         unsetenv("BOARDGHOST_OTA_PATH"); unsetenv("BOARDGHOST_OTA_PORT");
         unsetenv("BOARDGHOST_OTA_BIND"); unsetenv("BOARDGHOST_NET");
@@ -67,6 +70,8 @@ bool espota_push(uint16_t device_port, const std::string& firmware,
     socklen_t ll = sizeof(la); getsockname(srv, (sockaddr*)&la, &ll);
     uint16_t host_port = ntohs(la.sin_port);
     ::listen(srv, 1);
+    // FIX 6: prevent test thread from hanging forever if device-side crashes.
+    timeval tv_accept{5, 0}; setsockopt(srv, SOL_SOCKET, SO_RCVTIMEO, &tv_accept, sizeof(tv_accept));
 
     // 2. UDP invite to the device.
     int u = ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -109,6 +114,8 @@ bool espota_push(uint16_t device_port, const std::string& firmware,
         sent += (size_t)w;
     }
     // 5. Read the device's closing status.
+    // FIX 6: timeout so a device-side crash can't hang the test thread.
+    timeval tv_fin{5, 0}; setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv_fin, sizeof(tv_fin));
     char fin[64]; ssize_t fn = ::recv(c, fin, sizeof(fin) - 1, 0);
     ::close(c); ::close(u);
     if (fn <= 0) return false;
