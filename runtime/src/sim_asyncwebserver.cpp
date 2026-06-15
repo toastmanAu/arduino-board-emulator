@@ -1,0 +1,210 @@
+// AsyncWebServer backing — own cpp-httplib server, per-request state objects.
+#include "ESPAsyncWebServer.h"
+#include "../third_party/cpp-httplib/httplib.h"
+
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace boardghost_internal {
+
+// Per-request scratch the AsyncWebServerRequest reads/writes. One per request,
+// stack-lived inside the httplib handler — naturally concurrent, no mutex.
+struct AsyncReqState {
+    const httplib::Request* req = nullptr;
+    httplib::Response*      res = nullptr;
+    std::vector<AsyncWebParameter> params;   // parsed query+form params
+    bool responded = false;
+};
+
+static uint16_t resolve_async_port(uint16_t def) {
+    if (const char* e = std::getenv("BOARDGHOST_ASYNC_WEBSERVER_PORT")) {
+        int p = std::atoi(e);
+        if (p > 0 && p < 65536) return (uint16_t)p;
+    }
+    return def;
+}
+
+// Expand %TOKEN% using the processor callback (ESPAsyncWebServer semantics).
+static std::string apply_template(const std::string& in, const AwsTemplateProcessor& cb) {
+    if (!cb) return in;
+    std::string out; out.reserve(in.size());
+    size_t i = 0;
+    while (i < in.size()) {
+        if (in[i] == '%') {
+            size_t end = in.find('%', i + 1);
+            if (end != std::string::npos) {
+                std::string token = in.substr(i + 1, end - i - 1);
+                if (token.empty()) { out += '%'; i = end + 1; continue; }  // "%%" -> "%"
+                out += cb(String(token.c_str())).c_str();
+                i = end + 1;
+                continue;
+            }
+        }
+        out += in[i++];
+    }
+    return out;
+}
+
+class AsyncServerImpl {
+public:
+    explicit AsyncServerImpl(uint16_t port) : port_(port) {}
+    ~AsyncServerImpl() { stop(); }
+
+    void add_route(const std::string& uri, WebRequestMethodComposite method,
+                   ArRequestHandlerFunction handler) {
+        auto wrap = [h = std::move(handler)](const httplib::Request& req, httplib::Response& res) {
+            AsyncReqState st; st.req = &req; st.res = &res;
+            for (auto it = req.params.begin(); it != req.params.end(); ++it)
+                st.params.emplace_back(String(it->first.c_str()), String(it->second.c_str()));
+            AsyncWebServerRequest r(&st);
+            try { h(&r); } catch (...) { res.status = 500; res.set_content("handler threw", "text/plain"); }
+            if (!st.responded) { res.status = 404; }
+        };
+        if (method & HTTP_GET)    srv_.Get(uri, wrap);
+        if (method & HTTP_POST)   srv_.Post(uri, wrap);
+        if (method & HTTP_PUT)    srv_.Put(uri, wrap);
+        if (method & HTTP_PATCH)  srv_.Patch(uri, wrap);
+        if (method & HTTP_DELETE) srv_.Delete(uri, wrap);
+        if (method & HTTP_OPTIONS) srv_.Options(uri, wrap);
+    }
+
+    void set_not_found(ArRequestHandlerFunction handler) {
+        srv_.set_error_handler([h = std::move(handler)](const httplib::Request& req, httplib::Response& res) {
+            if (res.status != 404) return;
+            AsyncReqState st; st.req = &req; st.res = &res;
+            AsyncWebServerRequest r(&st);
+            try { h(&r); } catch (...) {}
+        });
+    }
+
+    void serve_static(const std::string& uri, fs::FS& fs, const std::string& path) {
+        // Map a URI prefix to a single file (the common dashboard case:
+        // serveStatic("/", SPIFFS, "/index.html")).
+        srv_.Get(uri, [&fs, path](const httplib::Request&, httplib::Response& res) {
+            fs::File f = fs.open(path.c_str(), "r");
+            if (!f) { res.status = 404; return; }
+            std::string body; size_t n = f.size(); body.resize(n);
+            if (n) f.read((uint8_t*)&body[0], n);
+            res.set_content(body, "text/html");
+        });
+    }
+
+    httplib::Server& server() { return srv_; }
+
+    void start() {
+        if (running_.load()) return;
+        uint16_t port = resolve_async_port(port_);
+        if (!srv_.bind_to_port("0.0.0.0", port)) {
+            std::fprintf(stderr, "[boardghost] AsyncWebServer: bind port %u failed.\n", port);
+            return;
+        }
+        running_.store(true);
+        thread_ = std::thread([this]() { srv_.listen_after_bind(); running_.store(false); });
+        std::fprintf(stderr, "[boardghost] AsyncWebServer: listening on http://localhost:%u\n", port);
+    }
+
+    void stop() {
+        if (!running_.load() && !thread_.joinable()) return;
+        srv_.stop();
+        if (thread_.joinable()) thread_.join();
+        running_.store(false);
+    }
+
+private:
+    uint16_t port_;
+    httplib::Server srv_;
+    std::thread thread_;
+    std::atomic<bool> running_{false};
+};
+
+}  // namespace boardghost_internal
+
+namespace bgi = boardghost_internal;
+
+// ---- AsyncWebServerRequest ----
+String AsyncWebServerRequest::url() const { return String(st_->req->path.c_str()); }
+String AsyncWebServerRequest::host() const {
+    auto it = st_->req->headers.find("Host");
+    return it == st_->req->headers.end() ? String() : String(it->second.c_str());
+}
+WebRequestMethodComposite AsyncWebServerRequest::method() const {
+    const std::string& m = st_->req->method;
+    if (m == "GET") return HTTP_GET;     if (m == "POST") return HTTP_POST;
+    if (m == "PUT") return HTTP_PUT;     if (m == "PATCH") return HTTP_PATCH;
+    if (m == "DELETE") return HTTP_DELETE; if (m == "OPTIONS") return HTTP_OPTIONS;
+    if (m == "HEAD") return HTTP_HEAD;   return HTTP_ANY;
+}
+int AsyncWebServerRequest::params() const { return (int)st_->params.size(); }
+bool AsyncWebServerRequest::hasParam(const String& name, bool, bool) const {
+    for (auto& p : st_->params) if (p.name() == name) return true;
+    return false;
+}
+const AsyncWebParameter* AsyncWebServerRequest::getParam(const String& name, bool, bool) const {
+    for (auto& p : st_->params) if (p.name() == name) return &p;
+    return nullptr;
+}
+const AsyncWebParameter* AsyncWebServerRequest::getParam(size_t idx) const {
+    return idx < st_->params.size() ? &st_->params[idx] : nullptr;
+}
+String AsyncWebServerRequest::arg(const String& name) const {
+    auto* p = getParam(name); return p ? p->value() : String();
+}
+bool AsyncWebServerRequest::hasHeader(const String& name) const {
+    return st_->req->headers.find(name.c_str()) != st_->req->headers.end();
+}
+String AsyncWebServerRequest::header(const String& name) const {
+    auto it = st_->req->headers.find(name.c_str());
+    return it == st_->req->headers.end() ? String() : String(it->second.c_str());
+}
+void AsyncWebServerRequest::send(int code, const String& contentType, const String& content) {
+    st_->res->status = code;
+    st_->res->set_content(content.c_str() ? content.c_str() : "",
+                          contentType.length() ? contentType.c_str() : "text/plain");
+    st_->responded = true;
+}
+void AsyncWebServerRequest::send_P(int code, const String& contentType, const char* content,
+                                   AwsTemplateProcessor processor) {
+    std::string body = bgi::apply_template(content ? content : "", processor);
+    st_->res->status = code;
+    st_->res->set_content(body, contentType.length() ? contentType.c_str() : "text/html");
+    st_->responded = true;
+}
+void AsyncWebServerRequest::send(fs::FS& fs, const String& path, const String& contentType,
+                                 bool /*download*/, AwsTemplateProcessor processor) {
+    fs::File f = fs.open(path.c_str(), "r");
+    if (!f) { st_->res->status = 404; st_->responded = true; return; }
+    std::string body; size_t n = f.size(); body.resize(n);
+    if (n) f.read((uint8_t*)&body[0], n);
+    if (processor) body = bgi::apply_template(body, processor);
+    st_->res->status = 200;
+    st_->res->set_content(body, contentType.length() ? contentType.c_str() : "text/html");
+    st_->responded = true;
+}
+void AsyncWebServerRequest::redirect(const String& url) {
+    st_->res->status = 302;
+    st_->res->set_header("Location", url.c_str());
+    st_->responded = true;
+}
+
+// ---- AsyncWebServer ----
+AsyncWebServer::AsyncWebServer(uint16_t port) : impl_(std::make_unique<bgi::AsyncServerImpl>(port)) {}
+AsyncWebServer::~AsyncWebServer() = default;
+void AsyncWebServer::on(const char* uri, ArRequestHandlerFunction handler) {
+    impl_->add_route(uri ? uri : "/", HTTP_ANY, std::move(handler));
+}
+void AsyncWebServer::on(const char* uri, WebRequestMethodComposite method, ArRequestHandlerFunction handler) {
+    impl_->add_route(uri ? uri : "/", method, std::move(handler));
+}
+void AsyncWebServer::onNotFound(ArRequestHandlerFunction handler) { impl_->set_not_found(std::move(handler)); }
+void AsyncWebServer::serveStatic(const char* uri, fs::FS& fs, const char* path, const char*) {
+    impl_->serve_static(uri ? uri : "/", fs, path ? path : "/");
+}
+void AsyncWebServer::addHandler(AsyncEventSource* /*source*/) { /* implemented in Task 7 */ }
+void AsyncWebServer::begin() { impl_->start(); }
+void AsyncWebServer::end()   { impl_->stop(); }

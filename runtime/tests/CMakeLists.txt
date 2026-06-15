@@ -29,6 +29,7 @@ add_executable(runtime_tests
     test_eeprom.cpp
     test_fs.cpp
     test_webserver.cpp
+    test_asyncwebserver.cpp
     test_wifi_secure.cpp
     test_websockets.cpp
     test_mdns.cpp
