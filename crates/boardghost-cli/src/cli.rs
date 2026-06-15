@@ -51,6 +51,14 @@ pub enum Command {
         #[command(subcommand)]
         action: UartAction,
     },
+    /// Push a firmware file to a running sim over the espota protocol — the
+    /// same path arduino-cli / the IDE network port uses, but built-in so no
+    /// Python is required. The sketch must be running with BOARDGHOST_NET=real
+    /// and have called ArduinoOTA.begin().
+    Ota {
+        #[command(subcommand)]
+        action: OtaAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -103,6 +111,22 @@ pub enum SeedAction {
         /// Input path. Defaults to `<project>/eeprom.seed.bin`.
         #[arg(long, value_name = "PATH")]
         from: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum OtaAction {
+    /// Stream a firmware .bin to the sim's OTA receiver on 127.0.0.1:<port>.
+    Push {
+        /// Firmware file to upload.
+        #[arg(value_name = "FIRMWARE_BIN")]
+        file: PathBuf,
+        /// OTA UDP port the sim is listening on (matches BOARDGHOST_OTA_PORT).
+        #[arg(long, default_value_t = 3232u16)]
+        port: u16,
+        /// Password, if the sketch called ArduinoOTA.setPassword().
+        #[arg(long)]
+        password: Option<String>,
     },
 }
 

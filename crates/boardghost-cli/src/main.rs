@@ -1,16 +1,23 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
 
-use boardghost::{cli::{Cli, Command, BuildProfile, SeedAction, UartAction}, eeprom_seed, BoardProfile};
+use boardghost::{
+    cli::{BuildProfile, Cli, Command, OtaAction, SeedAction, UartAction},
+    eeprom_seed, ota, BoardProfile,
+};
 use std::io::Write;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::ListBoards => list_boards(),
-        Command::Doctor     => boardghost::doctor::run(),
-        Command::Build { project, board, profile } => {
+        Command::Doctor => boardghost::doctor::run(),
+        Command::Build {
+            project,
+            board,
+            profile,
+        } => {
             let boards = boards_dir()?;
             let runtime = runtime_dir()?;
             let release = matches!(profile, BuildProfile::Release);
@@ -18,8 +25,13 @@ fn main() -> Result<()> {
             println!("Built: {}", r.binary.display());
             Ok(())
         }
-        Command::Run { project, board, profile, screenshot } => {
-            let boards  = boards_dir()?;
+        Command::Run {
+            project,
+            board,
+            profile,
+            screenshot,
+        } => {
+            let boards = boards_dir()?;
             let runtime = runtime_dir()?;
             let release = matches!(profile, BuildProfile::Release);
             let r = boardghost::build::run_build(&project, &board, &boards, &runtime, release)?;
@@ -31,31 +43,61 @@ fn main() -> Result<()> {
                 None => {}
             }
             eprintln!("→ Launching {}...", r.binary.display());
-            let code = boardghost::run::exec_sketch(&r.binary, screenshot.as_deref(), Some(&project))?;
+            let code =
+                boardghost::run::exec_sketch(&r.binary, screenshot.as_deref(), Some(&project))?;
             std::process::exit(code);
         }
         Command::Seed { action } => seed(action),
         Command::Uart { action } => uart(action),
+        Command::Ota { action } => {
+            match action {
+                OtaAction::Push {
+                    file,
+                    port,
+                    password,
+                } => {
+                    let firmware = std::fs::read(&file)
+                        .with_context(|| format!("reading {}", file.display()))?;
+                    eprintln!("→ Pushing {} bytes to 127.0.0.1:{port}...", firmware.len());
+                    ota::push(port, &firmware, password.as_deref())?;
+                    eprintln!("✓ OTA accepted — firmware written to <project>/.boardghost/ota-firmware.bin");
+                    Ok(())
+                }
+            }
+        }
     }
 }
 
 fn uart(action: UartAction) -> Result<()> {
     match action {
-        UartAction::Inject { project, port, crlf, text, hex, queue } => {
+        UartAction::Inject {
+            project,
+            port,
+            crlf,
+            text,
+            hex,
+            queue,
+        } => {
             let bytes: Vec<u8> = if hex {
                 // Strip whitespace then parse hex pairs; helpful for modem
                 // protocols where you paste a wireshark dump.
                 let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
                 if cleaned.len() % 2 != 0 {
-                    anyhow::bail!("--hex needs an even number of digits, got {} chars", cleaned.len());
+                    anyhow::bail!(
+                        "--hex needs an even number of digits, got {} chars",
+                        cleaned.len()
+                    );
                 }
-                (0..cleaned.len()).step_by(2)
-                    .map(|i| u8::from_str_radix(&cleaned[i..i+2], 16))
+                (0..cleaned.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&cleaned[i..i + 2], 16))
                     .collect::<std::result::Result<_, _>>()
                     .map_err(|e| anyhow::anyhow!("invalid hex: {e}"))?
             } else {
                 let mut v = text.into_bytes();
-                if crlf { v.extend_from_slice(b"\r\n"); }
+                if crlf {
+                    v.extend_from_slice(b"\r\n");
+                }
                 v
             };
             if queue {
@@ -65,7 +107,8 @@ fn uart(action: UartAction) -> Result<()> {
                 // rx_buf after the trigger ACK has been read. Removes the
                 // 10-second timing pressure entirely — queue first, click
                 // the trigger UI whenever you're ready.
-                let qpath = project.join(".boardghost")
+                let qpath = project
+                    .join(".boardghost")
                     .join(format!("uart-{port}-queue.bin"));
                 if let Some(parent) = qpath.parent() {
                     std::fs::create_dir_all(parent).ok();
@@ -73,7 +116,9 @@ fn uart(action: UartAction) -> Result<()> {
                 // Truncate-and-write: each invocation replaces the staged
                 // scan, since a scanner only fires one barcode per trigger.
                 let mut f = std::fs::OpenOptions::new()
-                    .write(true).create(true).truncate(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
                     .open(&qpath)?;
                 f.write_all(&bytes)?;
                 f.flush()?;
@@ -84,7 +129,8 @@ fn uart(action: UartAction) -> Result<()> {
                 );
                 return Ok(());
             }
-            let fifo = project.join(".boardghost")
+            let fifo = project
+                .join(".boardghost")
                 .join(format!("uart-{port}-in.fifo"));
             if !fifo.exists() {
                 anyhow::bail!(
@@ -117,7 +163,10 @@ fn seed(action: SeedAction) -> Result<()> {
         SeedAction::Restore { project, from } => {
             let src = from.unwrap_or_else(|| eeprom_seed::default_seed_path(&project));
             eeprom_seed::restore(&project, &src)?;
-            println!("Restored EEPROM from {} → .boardghost/eeprom.bin", src.display());
+            println!(
+                "Restored EEPROM from {} → .boardghost/eeprom.bin",
+                src.display()
+            );
             Ok(())
         }
     }
@@ -144,7 +193,9 @@ fn boards_dir() -> Result<PathBuf> {
         PathBuf::from("../../runtime/boards"),
     ];
     for c in &candidates {
-        if c.exists() { return Ok(c.clone()); }
+        if c.exists() {
+            return Ok(c.clone());
+        }
     }
     anyhow::bail!("could not locate runtime/boards; set BOARDGHOST_BOARDS");
 }
@@ -155,7 +206,9 @@ fn runtime_dir() -> Result<PathBuf> {
     }
     for c in ["runtime", "../runtime", "../../runtime"] {
         let p = PathBuf::from(c);
-        if p.exists() { return Ok(p); }
+        if p.exists() {
+            return Ok(p);
+        }
     }
     anyhow::bail!("could not locate runtime/; set BOARDGHOST_RUNTIME");
 }
