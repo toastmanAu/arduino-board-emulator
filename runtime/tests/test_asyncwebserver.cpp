@@ -155,21 +155,22 @@ TEST(AsyncWebServerTest, EventSourceDeliversFrame) {
     AsyncEventSource events("/events");
     server.addHandler(&events);
     server.begin();
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    wait_ready(port);
 
     // Receive the stream on a background thread; stop after the first frame.
     std::string received;
     std::thread reader([&]{
         httplib::Client cli("127.0.0.1", port);
-        cli.set_read_timeout(2, 0);
+        cli.set_read_timeout(3, 0);
         cli.Get("/events", [&](const char* data, size_t len) {
             received.append(data, len);
             return received.find("\n\n") == std::string::npos;  // stop after one frame
         });
     });
 
-    // Give the client time to connect, then push an event.
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    // Spin until client registers, then push an event.
+    for (int i = 0; i < 50 && events.count() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     EXPECT_GE(events.count(), (size_t)1);
     events.send("hello-sse", "tick");
 
@@ -178,4 +179,24 @@ TEST(AsyncWebServerTest, EventSourceDeliversFrame) {
 
     EXPECT_NE(received.find("event: tick"), std::string::npos);
     EXPECT_NE(received.find("data: hello-sse"), std::string::npos);
+}
+
+TEST(AsyncWebServerTest, EventSourceImplOutlivesWrapper) {
+    // Regression: AsyncServerImpl must co-own the EventSourceImpl via shared_ptr,
+    // so httplib lambdas (and stop()->shutdown()) don't touch freed memory if the
+    // AsyncEventSource wrapper is destroyed before the server.
+    uint16_t port = pick_port();
+    AsyncWebServer server(port);
+    {
+        AsyncEventSource events("/events");
+        server.addHandler(&events);
+        server.begin();
+        wait_ready(port);
+    }   // `events` (the wrapper) is destroyed here, before server.end()
+    // Hitting the endpoint + tearing down must not use-after-free.
+    httplib::Client cli("127.0.0.1", port);
+    cli.set_read_timeout(1, 0);
+    cli.Get("/events", [](const char*, size_t) { return false; });  // connect then drop
+    server.end();   // stop()->shutdown() on the co-owned impl must be safe
+    SUCCEED();
 }

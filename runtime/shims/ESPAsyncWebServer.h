@@ -92,6 +92,9 @@ public:
     size_t count() const;
     // Internal: called by AsyncWebServer::addHandler.
     boardghost_internal::EventSourceImpl* impl() const { return impl_.get(); }
+    // Internal: lets AsyncWebServer co-own the impl so registered httplib
+    // lambdas can't outlive it (see addHandler).
+    std::shared_ptr<boardghost_internal::EventSourceImpl> shared_impl() const { return impl_; }
 private:
     String url_;
     std::shared_ptr<boardghost_internal::EventSourceImpl> impl_;

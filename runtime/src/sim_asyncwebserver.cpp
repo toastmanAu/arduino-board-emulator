@@ -61,6 +61,7 @@ static std::string apply_template(const std::string& in, const AwsTemplateProces
 }
 
 class EventSourceImpl {
+    static constexpr size_t kMaxQueueDepth = 256;
 public:
     // One connected browser.
     struct Client {
@@ -106,18 +107,23 @@ public:
         std::lock_guard<std::mutex> lk(clients_mutex_);
         for (auto& c : clients_) {
             std::lock_guard<std::mutex> cl(c->m);
+            while (c->queue.size() >= kMaxQueueDepth) c->queue.pop_front();   // drop oldest; keep latest telemetry
             c->queue.push_back(frame);
             c->cv.notify_one();
         }
     }
 
-    size_t count() {
+    size_t count() const {
         std::lock_guard<std::mutex> lk(clients_mutex_);
         return clients_.size();
     }
 
     // Release all held connections so the server thread can join.
     void shutdown() {
+        // Set the atomic first: any client that connects in the window between here
+        // and acquiring clients_mutex_ will observe shutdown_==true in its wait
+        // predicate and exit immediately. Do NOT hold clients_mutex_ across both —
+        // the GET handler also takes it, which would deadlock.
         shutdown_ = true;
         std::lock_guard<std::mutex> lk(clients_mutex_);
         for (auto& c : clients_) {
@@ -128,7 +134,7 @@ public:
     }
 
 private:
-    std::mutex clients_mutex_;
+    mutable std::mutex clients_mutex_;
     std::set<std::shared_ptr<Client>> clients_;
     std::atomic<bool> shutdown_{false};
 };
@@ -186,9 +192,9 @@ public:
 
     httplib::Server& server() { return srv_; }
 
-    void attach_events(EventSourceImpl* es, const std::string& url) {
-        event_sources_.push_back(es);
+    void attach_events(std::shared_ptr<EventSourceImpl> es, const std::string& url) {
         es->attach(srv_, url);
+        event_sources_.push_back(std::move(es));
     }
 
     void start() {
@@ -212,7 +218,7 @@ public:
 
     void stop() {
         if (!running_.load() && !thread_.joinable()) return;
-        for (auto* es : event_sources_) es->shutdown();
+        for (auto& es : event_sources_) es->shutdown();
         srv_.stop();
         if (thread_.joinable()) thread_.join();
         running_.store(false);
@@ -223,7 +229,7 @@ private:
     httplib::Server srv_;
     std::thread thread_;
     std::atomic<bool> running_{false};
-    std::vector<EventSourceImpl*> event_sources_;
+    std::vector<std::shared_ptr<EventSourceImpl>> event_sources_;
 };
 
 }  // namespace boardghost_internal
@@ -309,7 +315,7 @@ void AsyncWebServer::serveStatic(const char* uri, fs::FS& fs, const char* path, 
     impl_->serve_static(uri ? uri : "/", fs, path ? path : "/");
 }
 void AsyncWebServer::addHandler(AsyncEventSource* source) {
-    if (source) impl_->attach_events(source->impl(), source->url().c_str());
+    if (source) impl_->attach_events(source->shared_impl(), source->url().c_str());
 }
 void AsyncWebServer::begin() { impl_->start(); }
 void AsyncWebServer::end()   { impl_->stop(); }
