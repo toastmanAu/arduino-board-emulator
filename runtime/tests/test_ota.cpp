@@ -47,6 +47,8 @@ protected:
         // FIX 9: clear callbacks to avoid dangling references between tests.
         ArduinoOTA.onStart(nullptr); ArduinoOTA.onEnd(nullptr);
         ArduinoOTA.onProgress(nullptr); ArduinoOTA.onError(nullptr);
+        // Reset password/auth state so the global singleton is clean for --gtest_repeat.
+        ArduinoOTA.setPassword(nullptr);
         std::error_code ec; fs::remove(ota_path, ec);
         unsetenv("BOARDGHOST_OTA_PATH"); unsetenv("BOARDGHOST_OTA_PORT");
         unsetenv("BOARDGHOST_OTA_BIND"); unsetenv("BOARDGHOST_NET");

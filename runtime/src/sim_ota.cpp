@@ -94,13 +94,25 @@ public:
         }
         int fl = fcntl(udp_fd_, F_GETFL, 0); fcntl(udp_fd_, F_SETFL, fl | O_NONBLOCK);
 
+        // OTA-4: Classify the full 127.0.0.0/8 block as loopback, not just 127.0.0.1.
+        struct in_addr ba{};
+        inet_pton(AF_INET, bind_addr.c_str(), &ba);
+        bool is_loopback = ((ntohl(ba.s_addr) >> 24) == 127);
+
         // Advertise only when reachable from the LAN (non-loopback bind).
-        if (mdns_ && bind_addr != "127.0.0.1") {
+        if (mdns_ && !is_loopback) {
             MDNS.begin(hostname_.empty() ? "esp32" : hostname_.c_str());
             MDNS.enableArduino(port_, auth_);
         }
         std::fprintf(stderr, "[boardghost] ArduinoOTA: listening on %s:%u%s\n",
                      bind_addr.c_str(), port_, auth_ ? " (auth)" : "");
+
+        // OTA-5: Warn when bound to the LAN without a password.
+        if (!is_loopback && !auth_) {
+            std::fprintf(stderr,
+                "[boardghost] WARNING: ArduinoOTA bound to %s without a password — "
+                "any host that can reach it may push firmware.\n", bind_addr.c_str());
+        }
     }
 
     void stop() {
@@ -123,32 +135,60 @@ public:
         // Save invite sender's address before auth block may overwrite `from`.
         sockaddr_in invite_from = from;
 
+        // OTA-2a: Reject absurd/zero sizes from an untrusted invite (prevents a
+        // LAN-bind peer from driving an unbounded write for the full recv timeout window).
+        constexpr size_t MAX_OTA_SIZE = 16u * 1024 * 1024;  // 16 MB — ample for ESP32 images
+        if (size == 0 || size > MAX_OTA_SIZE) {
+            fire_error(OTA_BEGIN_ERROR);
+            return;
+        }
+
         if (auth_) {
+            // OTA-1: A partial getrandom is a fatal auth error — no weak-nonce fallback.
+            // OTA-6: Nonce is purely the 16 random bytes; getpid() is no longer appended.
             unsigned char rnd[16];
             ssize_t gr = getrandom(rnd, sizeof(rnd), 0);
-            std::string nonce = ota_md5(std::string(reinterpret_cast<char*>(rnd), gr > 0 ? (size_t)gr : 0) + std::to_string(getpid()));
+            if (gr != (ssize_t)sizeof(rnd)) {
+                fire_error(OTA_AUTH_ERROR);
+                return;
+            }
+            std::string nonce = ota_md5(std::string(reinterpret_cast<char*>(rnd), sizeof(rnd)));
             std::string authreq = "AUTH " + nonce + "\n";
-            ::sendto(udp_fd_, authreq.data(), authreq.size(), 0, (sockaddr*)&from, fl);
+            // OTA-3: Send AUTH challenge to the saved invite sender (not a potentially
+            // clobbered `from`).
+            ::sendto(udp_fd_, authreq.data(), authreq.size(), 0,
+                     (sockaddr*)&invite_from, sizeof(invite_from));
             // Await the host's response (blocking with a short timeout).
             timeval tv{3, 0}; setsockopt(udp_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
             int curfl = fcntl(udp_fd_, F_GETFL, 0); fcntl(udp_fd_, F_SETFL, curfl & ~O_NONBLOCK);
-            char rb[256]; ssize_t rn = ::recvfrom(udp_fd_, rb, sizeof(rb) - 1, 0, (sockaddr*)&from, &fl);
+            // OTA-3: Read auth response into a dedicated sockaddr so we can verify the
+            // responder is the same peer that sent the invite.
+            char rb[256];
+            sockaddr_in auth_from{};
+            socklen_t auth_fl = sizeof(auth_from);
+            ssize_t rn = ::recvfrom(udp_fd_, rb, sizeof(rb) - 1, 0,
+                                    (sockaddr*)&auth_from, &auth_fl);
             fcntl(udp_fd_, F_SETFL, curfl);   // restore non-blocking
             bool ok = false;
-            if (rn > 0) {
-                rb[rn] = 0; std::istringstream as(rb);
+            if (rn > 0
+                && auth_from.sin_addr.s_addr == invite_from.sin_addr.s_addr
+                && auth_from.sin_port == invite_from.sin_port) {
+                rb[rn] = 0;
+                std::istringstream as(rb);
                 std::string cnonce, response; as >> cnonce >> response;
                 ok = (response == ota_md5(pass_md5_ + ":" + nonce + ":" + cnonce));
             }
             if (!ok) {
                 const char* deny = "Authentication Failed\n";
-                ::sendto(udp_fd_, deny, std::strlen(deny), 0, (sockaddr*)&from, fl);
+                ::sendto(udp_fd_, deny, std::strlen(deny), 0,
+                         (sockaddr*)&invite_from, sizeof(invite_from));
                 fire_error(OTA_AUTH_ERROR);
                 return;
             }
         }
         const char* okmsg = "OK\n";
-        ::sendto(udp_fd_, okmsg, std::strlen(okmsg), 0, (sockaddr*)&from, fl);
+        ::sendto(udp_fd_, okmsg, std::strlen(okmsg), 0,
+                 (sockaddr*)&invite_from, sizeof(invite_from));
 
         // Connect back to the host and pull the firmware.
         int tcp = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -191,7 +231,10 @@ public:
 
         size_t got = 0; char chunk[4096]; bool recv_ok = true;
         while (got < size) {
-            ssize_t r = ::recv(tcp, chunk, sizeof(chunk), 0);
+            // OTA-2b: Budget each recv to at most the remaining declared bytes.
+            size_t want = size - got;
+            size_t cap  = want < sizeof(chunk) ? want : sizeof(chunk);
+            ssize_t r = ::recv(tcp, chunk, cap, 0);
             if (r <= 0) { recv_ok = false; break; }
             // FIX 5: capture write count and check for Update error.
             size_t written = Update.write((uint8_t*)chunk, (size_t)r);
