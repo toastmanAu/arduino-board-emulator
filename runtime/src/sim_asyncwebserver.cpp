@@ -13,6 +13,11 @@
 
 namespace boardghost_internal {
 
+// Set true by a matched route wrapper; reset before routing each request.
+// Lets the not-found error handler distinguish "no route matched" (real 404)
+// from "a matched route chose to send 404" (must NOT trigger onNotFound).
+static thread_local bool tls_route_handled = false;
+
 // Per-request scratch the AsyncWebServerRequest reads/writes. One per request,
 // stack-lived inside the httplib handler — naturally concurrent, no mutex.
 struct AsyncReqState {
@@ -65,6 +70,7 @@ public:
             AsyncWebServerRequest r(&st);
             try { h(&r); } catch (...) { res.status = 500; res.set_content("handler threw", "text/plain"); }
             if (!st.responded) { res.status = 404; }
+            tls_route_handled = true;   // mark that a route matched (even on deliberate 404)
         };
         if (method & HTTP_GET)    srv_.Get(uri, wrap);
         if (method & HTTP_POST)   srv_.Post(uri, wrap);
@@ -72,10 +78,13 @@ public:
         if (method & HTTP_PATCH)  srv_.Patch(uri, wrap);
         if (method & HTTP_DELETE) srv_.Delete(uri, wrap);
         if (method & HTTP_OPTIONS) srv_.Options(uri, wrap);
+        // HTTP_HEAD is intentionally not registered: httplib auto-handles HEAD
+        // for any registered GET route, so no explicit registration is needed.
     }
 
     void set_not_found(ArRequestHandlerFunction handler) {
         srv_.set_error_handler([h = std::move(handler)](const httplib::Request& req, httplib::Response& res) {
+            if (tls_route_handled) return;  // a matched route owns this response (even a 404)
             if (res.status != 404) return;
             AsyncReqState st; st.req = &req; st.res = &res;
             AsyncWebServerRequest r(&st);
@@ -86,12 +95,15 @@ public:
     void serve_static(const std::string& uri, fs::FS& fs, const std::string& path) {
         // Map a URI prefix to a single file (the common dashboard case:
         // serveStatic("/", SPIFFS, "/index.html")).
-        srv_.Get(uri, [&fs, path](const httplib::Request&, httplib::Response& res) {
-            fs::File f = fs.open(path.c_str(), "r");
-            if (!f) { res.status = 404; return; }
+        // NOTE: `fs` is captured by reference for the server's lifetime. Callers must
+        // ensure it outlives the server — true for the usual globals (SPIFFS/LittleFS).
+        srv_.Get(uri, [fsp = &fs, path](const httplib::Request&, httplib::Response& res) {
+            fs::File f = fsp->open(path.c_str(), "r");
+            if (!f) { res.status = 404; tls_route_handled = true; return; }
             std::string body; size_t n = f.size(); body.resize(n);
             if (n) f.read((uint8_t*)&body[0], n);
             res.set_content(body, "text/html");
+            tls_route_handled = true;
         });
     }
 
@@ -99,6 +111,13 @@ public:
 
     void start() {
         if (running_.load()) return;
+        // Reset the per-request route-handled flag before each request so that
+        // the onNotFound error handler can distinguish "no route matched" from
+        // "a matched route deliberately returned 404".
+        srv_.set_pre_routing_handler([](const httplib::Request&, httplib::Response&) {
+            tls_route_handled = false;
+            return httplib::Server::HandlerResponse::Unhandled;  // continue normal routing
+        });
         uint16_t port = resolve_async_port(port_);
         if (!srv_.bind_to_port("0.0.0.0", port)) {
             std::fprintf(stderr, "[boardghost] AsyncWebServer: bind port %u failed.\n", port);
