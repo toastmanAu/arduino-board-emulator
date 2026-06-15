@@ -13,6 +13,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <chrono>
 
 namespace {
 uint16_t pick_port() {
@@ -146,4 +147,35 @@ TEST(AsyncWebServerTest, ServeStaticServesFileFromFS) {
 
     server.end();
     std_fs::remove_all(assets);
+}
+
+TEST(AsyncWebServerTest, EventSourceDeliversFrame) {
+    uint16_t port = pick_port();
+    AsyncWebServer server(port);
+    AsyncEventSource events("/events");
+    server.addHandler(&events);
+    server.begin();
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    // Receive the stream on a background thread; stop after the first frame.
+    std::string received;
+    std::thread reader([&]{
+        httplib::Client cli("127.0.0.1", port);
+        cli.set_read_timeout(2, 0);
+        cli.Get("/events", [&](const char* data, size_t len) {
+            received.append(data, len);
+            return received.find("\n\n") == std::string::npos;  // stop after one frame
+        });
+    });
+
+    // Give the client time to connect, then push an event.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT_GE(events.count(), (size_t)1);
+    events.send("hello-sse", "tick");
+
+    reader.join();
+    server.end();
+
+    EXPECT_NE(received.find("event: tick"), std::string::npos);
+    EXPECT_NE(received.find("data: hello-sse"), std::string::npos);
 }

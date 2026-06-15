@@ -3,10 +3,14 @@
 #include "../third_party/cpp-httplib/httplib.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -55,6 +59,79 @@ static std::string apply_template(const std::string& in, const AwsTemplateProces
     }
     return out;
 }
+
+class EventSourceImpl {
+public:
+    // One connected browser.
+    struct Client {
+        std::mutex m;
+        std::condition_variable cv;
+        std::deque<std::string> queue;   // formatted SSE frames
+        bool closed = false;
+    };
+
+    // Register the streaming route on the httplib server.
+    void attach(httplib::Server& srv, const std::string& url) {
+        srv.Get(url, [this](const httplib::Request&, httplib::Response& res) {
+            auto client = std::make_shared<Client>();
+            { std::lock_guard<std::mutex> lk(clients_mutex_); clients_.insert(client); }
+            res.set_chunked_content_provider("text/event-stream",
+                [this, client](size_t, httplib::DataSink& sink) {
+                    std::unique_lock<std::mutex> lk(client->m);
+                    client->cv.wait(lk, [&]{ return client->closed || !client->queue.empty() || shutdown_.load(); });
+                    if (shutdown_.load() || client->closed) return false;   // end the stream
+                    while (!client->queue.empty()) {
+                        std::string frame = std::move(client->queue.front());
+                        client->queue.pop_front();
+                        lk.unlock();
+                        if (!sink.write(frame.data(), frame.size())) { lk.lock(); return false; }
+                        lk.lock();
+                    }
+                    return true;
+                },
+                [this, client](bool) {   // on connection close
+                    std::lock_guard<std::mutex> lk(clients_mutex_);
+                    clients_.erase(client);
+                });
+        });
+    }
+
+    void send(const std::string& message, const std::string& event,
+              uint32_t id, uint32_t reconnect) {
+        std::string frame;
+        if (reconnect) frame += "retry: " + std::to_string(reconnect) + "\n";
+        if (id)        frame += "id: " + std::to_string(id) + "\n";
+        if (!event.empty()) frame += "event: " + event + "\n";
+        frame += "data: " + message + "\n\n";
+        std::lock_guard<std::mutex> lk(clients_mutex_);
+        for (auto& c : clients_) {
+            std::lock_guard<std::mutex> cl(c->m);
+            c->queue.push_back(frame);
+            c->cv.notify_one();
+        }
+    }
+
+    size_t count() {
+        std::lock_guard<std::mutex> lk(clients_mutex_);
+        return clients_.size();
+    }
+
+    // Release all held connections so the server thread can join.
+    void shutdown() {
+        shutdown_ = true;
+        std::lock_guard<std::mutex> lk(clients_mutex_);
+        for (auto& c : clients_) {
+            std::lock_guard<std::mutex> cl(c->m);
+            c->closed = true;
+            c->cv.notify_all();
+        }
+    }
+
+private:
+    std::mutex clients_mutex_;
+    std::set<std::shared_ptr<Client>> clients_;
+    std::atomic<bool> shutdown_{false};
+};
 
 class AsyncServerImpl {
 public:
@@ -109,6 +186,11 @@ public:
 
     httplib::Server& server() { return srv_; }
 
+    void attach_events(EventSourceImpl* es, const std::string& url) {
+        event_sources_.push_back(es);
+        es->attach(srv_, url);
+    }
+
     void start() {
         if (running_.load()) return;
         // Reset the per-request route-handled flag before each request so that
@@ -130,6 +212,7 @@ public:
 
     void stop() {
         if (!running_.load() && !thread_.joinable()) return;
+        for (auto* es : event_sources_) es->shutdown();
         srv_.stop();
         if (thread_.joinable()) thread_.join();
         running_.store(false);
@@ -140,6 +223,7 @@ private:
     httplib::Server srv_;
     std::thread thread_;
     std::atomic<bool> running_{false};
+    std::vector<EventSourceImpl*> event_sources_;
 };
 
 }  // namespace boardghost_internal
@@ -224,6 +308,18 @@ void AsyncWebServer::onNotFound(ArRequestHandlerFunction handler) { impl_->set_n
 void AsyncWebServer::serveStatic(const char* uri, fs::FS& fs, const char* path, const char*) {
     impl_->serve_static(uri ? uri : "/", fs, path ? path : "/");
 }
-void AsyncWebServer::addHandler(AsyncEventSource* /*source*/) { /* implemented in Task 7 */ }
+void AsyncWebServer::addHandler(AsyncEventSource* source) {
+    if (source) impl_->attach_events(source->impl(), source->url().c_str());
+}
 void AsyncWebServer::begin() { impl_->start(); }
 void AsyncWebServer::end()   { impl_->stop(); }
+
+// ---- AsyncEventSource ----
+AsyncEventSource::AsyncEventSource(const String& url)
+    : url_(url), impl_(std::make_shared<bgi::EventSourceImpl>()) {}
+AsyncEventSource::~AsyncEventSource() = default;
+void AsyncEventSource::onConnect(std::function<void()> /*cb*/) { /* connect callback not surfaced in sim */ }
+void AsyncEventSource::send(const char* message, const char* event, uint32_t id, uint32_t reconnect) {
+    impl_->send(message ? message : "", event ? event : "", id, reconnect);
+}
+size_t AsyncEventSource::count() const { return impl_->count(); }
