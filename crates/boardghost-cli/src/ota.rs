@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::io::{Read, Write};
 use std::net::{TcpListener, UdpSocket};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// MD5 hex of a byte slice. espota uses MD5 for both the firmware checksum
 /// and the auth challenge.
@@ -47,10 +47,30 @@ pub fn push(port: u16, firmware: &[u8], password: Option<&str>) -> Result<()> {
         anyhow::ensure!(reply.starts_with("OK"), "device declined: {}", reply.trim());
     }
 
-    let (mut sock, _) = listener.accept().context("device did not connect back")?;
+    listener.set_nonblocking(true).ok();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let (mut sock, _) = loop {
+        match listener.accept() {
+            Ok(pair) => break pair,
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    anyhow::bail!(
+                        "device did not connect back within 10s — is the sketch running \
+                         with BOARDGHOST_NET=real and ArduinoOTA.begin()?"
+                    );
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Err(e).context("accepting device connect-back"),
+        }
+    };
+    sock.set_nonblocking(false).ok();
+    sock.set_read_timeout(Some(Duration::from_secs(10))).ok();
     sock.write_all(firmware).context("stream firmware")?;
     let mut fin = String::new();
-    sock.read_to_string(&mut fin).ok();
+    if let Err(e) = sock.read_to_string(&mut fin) {
+        anyhow::bail!("TCP read error after streaming firmware: {e}");
+    }
     anyhow::ensure!(
         fin.starts_with("OK"),
         "device reported failure: {}",
@@ -65,16 +85,14 @@ mod tests {
 
     #[test]
     fn auth_digest_matches_reference() {
-        // Reference vector: passmd5 = md5("secret"), nonce/cnonce fixed.
+        // Pins the espota auth-digest formula md5(md5(pw):nonce:cnonce) against a
+        // reference vector (verified with md5sum), so any change to the field
+        // order / separator / hashing would break this test rather than silently
+        // diverge from the C++ receiver in sim_ota.cpp.
         let passmd5 = md5_hex(b"secret");
         let nonce = "deadbeef";
         let cnonce = "feedface";
         let result = md5_hex(format!("{passmd5}:{nonce}:{cnonce}").as_bytes());
-        // Same formula the C++ receiver uses — recompute and compare.
-        assert_eq!(
-            result,
-            md5_hex(format!("{passmd5}:{nonce}:{cnonce}").as_bytes())
-        );
-        assert_eq!(result.len(), 32);
+        assert_eq!(result, "0c0440cc7719eb864c3f2b6baa807eb9");
     }
 }

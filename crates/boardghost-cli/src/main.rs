@@ -49,21 +49,23 @@ fn main() -> Result<()> {
         }
         Command::Seed { action } => seed(action),
         Command::Uart { action } => uart(action),
-        Command::Ota { action } => {
-            match action {
-                OtaAction::Push {
-                    file,
-                    port,
-                    password,
-                } => {
-                    let firmware = std::fs::read(&file)
-                        .with_context(|| format!("reading {}", file.display()))?;
-                    eprintln!("→ Pushing {} bytes to 127.0.0.1:{port}...", firmware.len());
-                    ota::push(port, &firmware, password.as_deref())?;
-                    eprintln!("✓ OTA accepted — firmware written to <project>/.boardghost/ota-firmware.bin");
-                    Ok(())
-                }
-            }
+        Command::Ota { action } => ota_cmd(action),
+    }
+}
+
+fn ota_cmd(action: OtaAction) -> Result<()> {
+    match action {
+        OtaAction::Push {
+            file,
+            port,
+            password,
+        } => {
+            let firmware =
+                std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
+            eprintln!("→ Pushing {} bytes to 127.0.0.1:{port}...", firmware.len());
+            ota::push(port, &firmware, password.as_deref())?;
+            eprintln!("✓ OTA accepted by device");
+            Ok(())
         }
     }
 }
