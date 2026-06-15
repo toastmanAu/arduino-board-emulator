@@ -14,10 +14,10 @@ Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on y
 - IoT library stubs: WiFi, WiFiClient, WiFiClientSecure, HTTPClient, EEPROM,
   FS, SPIFFS, LittleFS, SD, TinyGsmClient, StreamDebugger
 - Configurable network: `BOARDGHOST_NET=fake|fail|real` (real mode uses libcurl)
-- Network service shims (real-mode backed): `WebServer` + `AsyncWebServer`
-  (incl. Server-Sent Events), `WebSocketsClient`, `PubSubClient` (MQTT),
-  ESPmDNS, and `ArduinoOTA` (real espota receiver — flash it with the IDE,
-  `arduino-cli`, or the built-in `boardghost ota push`)
+- Network service shims: `WebServer`, `AsyncWebServer` (incl. Server-Sent
+  Events), `WebSocketsClient`, `PubSubClient` (MQTT), and ESPmDNS — plus
+  `ArduinoOTA`, a real espota receiver (needs `BOARDGHOST_NET=real`; flash it
+  with the IDE, `arduino-cli`, or the built-in `boardghost ota push`)
 - Filesystem assets in `./sim-assets/<mount>/` (per-project, gitignorable)
 - EEPROM persists to `./.boardghost/eeprom.bin`
 - GPIO inspector (live pin-state grid in the launcher)

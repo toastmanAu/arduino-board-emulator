@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 /// MD5 hex of a byte slice. espota uses MD5 for both the firmware checksum
 /// and the auth challenge.
 fn md5_hex(bytes: &[u8]) -> String {
-    // `md5` crate (add to Cargo.toml). Tiny, pure-Rust, no build deps.
+    // Uses the `md5` crate (pure-Rust, no build deps).
     format!("{:x}", md5::compute(bytes))
 }
 
