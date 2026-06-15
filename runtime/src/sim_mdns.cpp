@@ -81,14 +81,13 @@ public:
     // espota discovery record. TXT keys mirror what the ESP32 core publishes;
     // the IDE keys on `tcp_check` / `auth_upload`. avahi-publish-service takes
     // TXT entries as trailing key=value args.
-    bool enableArduino(uint16_t port, bool auth) {
-        if (disabled()) return true;
+    void enableArduino(uint16_t port, bool auth) {
+        if (disabled()) return;
         std::string name = hostname_.empty() ? "esp32" : hostname_;
         spawn({"avahi-publish-service", name, "_arduino._tcp",
                std::to_string(port),
                "tcp_check=no", "ssh_upload=no", "board=esp32",
                std::string("auth_upload=") + (auth ? "yes" : "no")});
-        return true;
     }
 
 private:
