@@ -71,3 +71,15 @@ TEST(MDNS, AddServiceAppearsInAvahiBrowse) {
 // from the prior test's child reap. The disabled() check itself is trivial
 // — a single getenv compare — and runs before any fork, so a unit test would
 // add little signal.)
+
+// enableArduino must register an _arduino._tcp service without crashing and
+// return cleanly whether or not avahi is installed (CI has no avahi-daemon).
+TEST(MDNS, EnableArduinoAdvertisesArduinoService) {
+    setenv("BOARDGHOST_MDNS", "off", 1);   // exercise the disabled fast-path
+    MDNSResponder mdns;
+    EXPECT_TRUE(mdns.begin("ghostboard"));
+    mdns.enableArduino(3232, /*auth=*/false);  // must not crash / hang
+    mdns.end();
+    unsetenv("BOARDGHOST_MDNS");
+    SUCCEED();
+}
