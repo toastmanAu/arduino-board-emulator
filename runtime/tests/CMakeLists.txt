@@ -22,6 +22,7 @@ add_executable(runtime_tests
     test_displays_extra.cpp
     test_lvgl_init.cpp
     test_screenshot.cpp
+    test_capture.cpp
     test_touch_sdl.cpp
     test_net_mode.cpp
     test_wifi.cpp

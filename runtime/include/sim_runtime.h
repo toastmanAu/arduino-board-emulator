@@ -36,6 +36,10 @@ int sim_screenshot(const char* path, void* lgfx_device);
 // as the screenshot target. Pass NULL on shutdown to unregister.
 void sim_set_active_display(void* lgfx_device);
 
+// Returns the currently-registered active display (an lgfx::LGFX_Device*),
+// or NULL if none. Used by the capture/mirror path.
+void* sim_get_active_display(void);
+
 #ifdef __cplusplus
 }
 #endif
