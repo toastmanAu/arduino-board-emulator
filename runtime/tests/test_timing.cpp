@@ -10,12 +10,20 @@ protected:
     void TearDown() override { sim_runtime_shutdown(); }
 };
 
-TEST_F(TimingTest, MillisStartsNearZero) {
+TEST_F(TimingTest, MillisStartsSeededToPreventUnderflow) {
     auto m = millis();
-    // SDL_Init (called in sim_runtime_init since Task 9) can take ~100ms
-    // on some hosts. 500ms is a generous bound that still catches gross bugs
-    // (e.g., g_start not being set in init).
-    EXPECT_LT(m, 500u);
+    // The runtime deliberately seeds millis() ~1 hour (3,600,000 ms) in the
+    // past so ESP32 staleness patterns like `millis() - 300000` don't break
+    // on 64-bit Linux (where `long` underflow zero-extends instead of
+    // wrapping like 32-bit ESP32). See the kMillisOffset rationale in
+    // sim_runtime.cpp. So at startup millis() must already be >= 1 hour.
+    //
+    // Lower bound: catches the seed being absent / g_start not initialised
+    // (which would return ~0). Upper bound: 1h plus a generous slack for
+    // SDL_Init (~100ms) and CI scheduling jitter — catches a wrong offset.
+    constexpr uint32_t kOneHourMs = 60u * 60u * 1000u;       // 3,600,000
+    EXPECT_GE(m, kOneHourMs);
+    EXPECT_LT(m, kOneHourMs + 60u * 1000u);                  // within a minute of the seed
 }
 
 TEST_F(TimingTest, MillisAdvancesMonotonically) {
