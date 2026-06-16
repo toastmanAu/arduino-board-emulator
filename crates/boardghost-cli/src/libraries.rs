@@ -33,6 +33,10 @@ pub const ALLOWLIST: &[&str] = &[
     "TimeLib",
     "ESP32Time",
     "Adafruit_Thermal",
+    // M2.H — ArduinoOTA (espota receiver) + AsyncWebServer (ESPAsyncWebServer + SSE)
+    "ArduinoOTA",
+    "ESPAsyncWebServer",
+    "AsyncTCP",
 ];
 
 pub fn is_shimmed(lib: &str) -> bool {
@@ -49,6 +53,9 @@ mod tests {
         assert!(is_shimmed("wifi"));        // case-insensitive
         assert!(is_shimmed("HTTPClient"));
         assert!(is_shimmed("LovyanGFX"));
+        assert!(is_shimmed("ArduinoOTA"));
+        assert!(is_shimmed("ESPAsyncWebServer"));
+        assert!(is_shimmed("AsyncTCP"));
     }
 
     #[test]

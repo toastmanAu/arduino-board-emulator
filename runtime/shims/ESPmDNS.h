@@ -38,7 +38,9 @@ public:
     // metadata; consumers can still connect via the host:port advertised.
     bool addServiceTxt(const char* /*service*/, const char* /*proto*/,
                        const char* /*key*/,     const char* /*value*/) { return true; }
-    void enableArduino(uint16_t /*port*/ = 3232, bool /*auth*/ = false) {}
+    // Advertise the _arduino._tcp service so arduino-cli / the IDE network
+    // port discovers this sketch as an OTA target. Real impl in sim_mdns.cpp.
+    void enableArduino(uint16_t port = 3232, bool auth = false);
 
 private:
     std::unique_ptr<boardghost_internal::MDnsImpl> impl_;

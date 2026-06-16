@@ -14,6 +14,8 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+# 0.8 switched to the RustCrypto Digest trait; 0.7's md5::compute() matches espota usage.
+md5 = "0.7"
 clap.workspace = true
 libc = "0.2"
 serde.workspace = true

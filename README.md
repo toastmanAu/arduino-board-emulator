@@ -14,6 +14,10 @@ Run unmodified ESP32 + Arduino sketches that use **LovyanGFX** and **LVGL** on y
 - IoT library stubs: WiFi, WiFiClient, WiFiClientSecure, HTTPClient, EEPROM,
   FS, SPIFFS, LittleFS, SD, TinyGsmClient, StreamDebugger
 - Configurable network: `BOARDGHOST_NET=fake|fail|real` (real mode uses libcurl)
+- Network service shims: `WebServer`, `AsyncWebServer` (incl. Server-Sent
+  Events), `WebSocketsClient`, `PubSubClient` (MQTT), and ESPmDNS — plus
+  `ArduinoOTA`, a real espota receiver (needs `BOARDGHOST_NET=real`; flash it
+  with the IDE, `arduino-cli`, or the built-in `boardghost ota push`)
 - Filesystem assets in `./sim-assets/<mount>/` (per-project, gitignorable)
 - EEPROM persists to `./.boardghost/eeprom.bin`
 - GPIO inspector (live pin-state grid in the launcher)
@@ -181,6 +185,11 @@ boardghost run --board st7789_esp32s3_sim \
 | `BOARDGHOST_SCREENSHOT_DELAY_MS=N` | Override the 2s default delay before screenshot fires (heavy `setup()` may need 5-10s). |
 | `BOARDGHOST_ASSETS_DIR=/path` | SPIFFS/LittleFS/SD mount root (auto-set by `boardghost run`). |
 | `BOARDGHOST_EEPROM_PATH=/path/file.bin` | Where EEPROM persists (auto-set to `.boardghost/eeprom.bin` by `boardghost run`). |
+| `BOARDGHOST_WEBSERVER_PORT=N` | Port for the sketch's `WebServer` (default 80; Linux needs root <1024). |
+| `BOARDGHOST_ASYNC_WEBSERVER_PORT=N` | Port for the sketch's `AsyncWebServer` (overrides the constructor port; distinct from `WebServer` so both can run). |
+| `BOARDGHOST_OTA_PORT=N` | `ArduinoOTA` espota UDP listener port (default 3232; needs `BOARDGHOST_NET=real`). |
+| `BOARDGHOST_OTA_BIND=addr` | `ArduinoOTA` listener bind address (default `127.0.0.1`; set `0.0.0.0` for over-LAN IDE/`arduino-cli` flashing). |
+| `BOARDGHOST_OTA_PATH=/path/file.bin` | Where a received OTA firmware image is written (default `.boardghost/ota-firmware.bin`). |
 
 ### Driving a sketch from a test script
 

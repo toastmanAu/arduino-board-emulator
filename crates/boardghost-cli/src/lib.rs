@@ -1,10 +1,4 @@
 pub mod arduino_libs;
-pub mod lgfx_codemod;
-pub mod include_scan;
-pub mod sketch_mirror;
-pub mod spiffs_mirror;
-pub mod lib_resolve;
-pub mod library_overrides;
 pub mod board;
 pub mod build;
 pub mod cli;
@@ -14,9 +8,16 @@ pub mod discover;
 pub mod doctor;
 pub mod eeprom_seed;
 pub mod error;
+pub mod include_scan;
+pub mod lgfx_codemod;
+pub mod lib_resolve;
 pub mod libraries;
+pub mod library_overrides;
+pub mod ota;
 pub mod preprocess;
 pub mod run;
+pub mod sketch_mirror;
+pub mod spiffs_mirror;
 
 pub use board::{BoardProfile, DisplayConfig, TouchConfig};
 pub use cli::{BuildProfile, Cli, Command};

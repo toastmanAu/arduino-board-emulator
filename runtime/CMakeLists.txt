@@ -23,10 +23,12 @@ add_library(sim_runtime STATIC
     src/sim_fs.cpp
     src/sim_misc.cpp
     src/sim_webserver.cpp
+    src/sim_asyncwebserver.cpp
     src/sim_wifi_secure.cpp
     src/sim_websockets.cpp
     src/sim_mdns.cpp
     src/sim_update.cpp
+    src/sim_ota.cpp
     src/sim_mqtt.cpp
     src/sim_audio.cpp
     src/sim_uart.cpp

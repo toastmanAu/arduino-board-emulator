@@ -78,6 +78,18 @@ public:
         return true;
     }
 
+    // espota discovery record. TXT keys mirror what the ESP32 core publishes;
+    // the IDE keys on `tcp_check` / `auth_upload`. avahi-publish-service takes
+    // TXT entries as trailing key=value args.
+    void enableArduino(uint16_t port, bool auth) {
+        if (disabled()) return;
+        std::string name = hostname_.empty() ? "esp32" : hostname_;
+        spawn({"avahi-publish-service", name, "_arduino._tcp",
+               std::to_string(port),
+               "tcp_check=no", "ssh_upload=no", "board=esp32",
+               std::string("auth_upload=") + (auth ? "yes" : "no")});
+    }
+
 private:
     static bool disabled() {
         const char* env = std::getenv("BOARDGHOST_MDNS");
@@ -132,6 +144,9 @@ bool MDNSResponder::begin(const char* hostname) {
 void MDNSResponder::end() { impl_->end(); }
 bool MDNSResponder::addService(const char* svc, const char* proto, uint16_t port) {
     return impl_->addService(svc ? svc : "", proto ? proto : "", port);
+}
+void MDNSResponder::enableArduino(uint16_t port, bool auth) {
+    impl_->enableArduino(port, auth);
 }
 
 MDNSResponder MDNS;

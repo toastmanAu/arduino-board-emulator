@@ -38,7 +38,7 @@ Add to `runtime/tests/test_mdns.cpp` (inside the existing anonymous-namespace te
 ```cpp
 // enableArduino must register an _arduino._tcp service without crashing and
 // return cleanly whether or not avahi is installed (CI has no avahi-daemon).
-TEST(MdnsTest, EnableArduinoAdvertisesArduinoService) {
+TEST(MDNS, EnableArduinoAdvertisesArduinoService) {
     setenv("BOARDGHOST_MDNS", "off", 1);   // exercise the disabled fast-path
     MDNSResponder mdns;
     EXPECT_TRUE(mdns.begin("ghostboard"));
@@ -51,7 +51,7 @@ TEST(MdnsTest, EnableArduinoAdvertisesArduinoService) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cmake --build build --target runtime_tests && ./build/tests/runtime_tests --gtest_filter='MdnsTest.EnableArduinoAdvertisesArduinoService'`
+Run: `cmake --build runtime/build --target runtime_tests && ./runtime/build/tests/runtime_tests --gtest_filter='MDNS.EnableArduinoAdvertisesArduinoService'`
 Expected: FAIL to compile — `enableArduino` is inline-only in the header and behaves as a no-op; this test only locks the contract. (If it compiles and passes immediately because the no-op exists, proceed — the real assertion is the implementation in Step 4 doesn't regress it.)
 
 - [ ] **Step 3: Implement**
@@ -91,7 +91,7 @@ void MDNSResponder::enableArduino(uint16_t port, bool auth) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cmake --build build --target runtime_tests && ./build/tests/runtime_tests --gtest_filter='MdnsTest.*'`
+Run: `cmake --build runtime/build --target runtime_tests && ./runtime/build/tests/runtime_tests --gtest_filter='MDNS.*'`
 Expected: PASS (all mDNS tests).
 
 - [ ] **Step 5: Commit**
@@ -405,7 +405,7 @@ TEST_F(OtaTest, WrongPasswordTriggersAuthError) {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cmake --build build --target runtime_tests`
+Run: `cmake --build runtime/build --target runtime_tests`
 Expected: FAIL to link — `sim_ota.cpp` doesn't exist yet, so `ArduinoOTA` is undefined.
 
 - [ ] **Step 4: Implement `runtime/src/sim_ota.cpp`**
@@ -634,12 +634,12 @@ ArduinoOTAClass ArduinoOTA;
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cmake --build build --target runtime_tests && ./build/tests/runtime_tests --gtest_filter='OtaTest.*'`
+Run: `cmake --build runtime/build --target runtime_tests && ./runtime/build/tests/runtime_tests --gtest_filter='OtaTest.*'`
 Expected: PASS (2 tests). If `ReceivesFirmware...` flakes on timing, raise the pump loop iteration count — it should not, since `handle()` blocks through the transfer once the invite is read.
 
 - [ ] **Step 6: Run the full suite to confirm no regressions**
 
-Run: `./build/tests/runtime_tests`
+Run: `./runtime/build/tests/runtime_tests`
 Expected: PASS (all tests, including the new OTA ones).
 
 - [ ] **Step 7: Commit**
@@ -1076,7 +1076,7 @@ TEST(AsyncWebServerTest, TemplateProcessorSubstitutes) {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cmake --build build --target runtime_tests`
+Run: `cmake --build runtime/build --target runtime_tests`
 Expected: FAIL to link — `sim_asyncwebserver.cpp` doesn't exist.
 
 - [ ] **Step 4: Implement `runtime/src/sim_asyncwebserver.cpp` (core only)**
@@ -1298,7 +1298,7 @@ Note: `AsyncEventSource` methods are declared in the header but not yet defined.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cmake --build build --target runtime_tests && ./build/tests/runtime_tests --gtest_filter='AsyncWebServerTest.*'`
+Run: `cmake --build runtime/build --target runtime_tests && ./runtime/build/tests/runtime_tests --gtest_filter='AsyncWebServerTest.*'`
 Expected: PASS (3 tests).
 
 - [ ] **Step 6: Commit**
@@ -1357,7 +1357,7 @@ TEST(AsyncWebServerTest, EventSourceDeliversFrame) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cmake --build build --target runtime_tests`
+Run: `cmake --build runtime/build --target runtime_tests`
 Expected: FAIL to link — `AsyncEventSource` ctor/`send`/`count`/`EventSourceImpl` are undefined.
 
 - [ ] **Step 3: Implement SSE**
@@ -1483,12 +1483,12 @@ void AsyncWebServer::addHandler(AsyncEventSource* source) {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cmake --build build --target runtime_tests && ./build/tests/runtime_tests --gtest_filter='AsyncWebServerTest.*'`
+Run: `cmake --build runtime/build --target runtime_tests && ./runtime/build/tests/runtime_tests --gtest_filter='AsyncWebServerTest.*'`
 Expected: PASS (4 tests, including `EventSourceDeliversFrame`).
 
 - [ ] **Step 5: Run the full suite**
 
-Run: `./build/tests/runtime_tests`
+Run: `./runtime/build/tests/runtime_tests`
 Expected: PASS (all tests).
 
 - [ ] **Step 6: Commit**
@@ -1534,7 +1534,7 @@ git commit -m "docs: ArduinoOTA + AsyncWebServer shims, new env vars"
 
 ## Self-review notes (for the executor)
 
-- **Build dir assumption:** steps assume a configured CMake build at `./build`. If absent, run `cmake -S runtime -B build -DBOARDGHOST_BUILD_TESTS=ON` first (mirror the repo's existing configure flags — check `crates/boardghost-cli/src/preprocess.rs` / CI for the canonical invocation).
+- **Build dir assumption:** steps assume a configured CMake build at `runtime/build`. If absent, run `cmake -S runtime -B runtime/build -DBOARDGHOST_BUILD_TESTS=ON` first (mirror the repo's existing configure flags — check `crates/boardghost-cli/src/preprocess.rs` / CI for the canonical invocation).
 - **OpenSSL dependency:** OTA auth needs `BOARDGHOST_WITH_OPENSSL=1` (default ON). On a build without OpenSSL, `ota_md5` returns "" and auth will reject every push — acceptable degradation; the non-auth path still works since the host computes the firmware MD5 but the receiver only *verifies* it via the existing `Update.setMD5` (which itself requires OpenSSL — consistent).
 - **Port collisions in tests:** tests pick random high ports; on a busy CI a rare collision can flake. Re-run is the mitigation; not worth a registry.
 - **`handle()` blocks during transfer:** by design (matches ESP32, which blocks `loop()` during OTA). Sketches and the test pump `handle()` from their loop.
