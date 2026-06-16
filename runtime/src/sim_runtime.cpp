@@ -100,6 +100,19 @@ namespace {
     }
 }
 
+// SDL event watch: fires the instant any event is added to the queue (via
+// SDL_PushEvent or SDL_PumpEvents pulling from the OS), BEFORE anything polls
+// it. We need this because LovyanGFX's Panel_sdl::_event_proc() drains the
+// whole queue with SDL_PollEvent every loop() and consumes SDL_QUIT itself —
+// so a window-close quit would never reach sim_pump_events()'s own peek once
+// a panel is set up. The watch records the quit regardless of who consumes it.
+static int SDLCALL quit_event_watch(void* /*userdata*/, SDL_Event* event) {
+    if (event && event->type == SDL_QUIT) {
+        g_should_quit.store(1);
+    }
+    return 0;  // return value is ignored for watchers (only filters use it)
+}
+
 extern "C" {
 
 void sim_runtime_init(int /*argc*/, char** /*argv*/) {
@@ -113,6 +126,8 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         std::fprintf(stderr, "[boardghost] SDL_Init failed: %s\n", SDL_GetError());
     }
+    // Record SDL_QUIT before Panel_sdl::_event_proc() can drain it (see watch).
+    SDL_AddEventWatch(quit_event_watch, nullptr);
     std::signal(SIGUSR1, sigusr1_handler);
     lgfx::Panel_sdl::setup();
     // Start background watcher thread for screenshot capture.
@@ -122,6 +137,7 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
 }
 
 void sim_runtime_shutdown(void) {
+    SDL_DelEventWatch(quit_event_watch, nullptr);
     lgfx::Panel_sdl::close();
     SDL_Quit();
 }
@@ -139,10 +155,14 @@ void sim_pump_events(void) {
     // Wayland; running Panel_sdl::loop on the main thread fixes both.
     lgfx::Panel_sdl::loop();
 
-    // Pump the OS event queue so any pending events are visible.
+    // Pump the OS event queue so any pending events are visible. The
+    // quit_event_watch installed in init() is the primary SDL_QUIT detector
+    // (it sees the event even when Panel_sdl::_event_proc drains it first).
     SDL_PumpEvents();
-    // Extract ONLY SDL_QUIT events; leave mouse/keyboard/window events in
-    // the queue so LVGL's input drivers (and any other consumer) can see them.
+    // Secondary path: if no panel is registered, Panel_sdl::loop() above
+    // early-returns without draining, so extract any SDL_QUIT here too. We
+    // leave mouse/keyboard/window events in the queue so LVGL's input drivers
+    // (and any other consumer) can still see them.
     SDL_Event events[8];
     int n = SDL_PeepEvents(events, 8, SDL_GETEVENT, SDL_QUIT, SDL_QUIT);
     if (n > 0) g_should_quit.store(1);
@@ -244,6 +264,10 @@ void analogWrite(uint8_t pin, int value) {
 void sim_set_active_display(void* lgfx_device) {
     g_active_display.store(lgfx_device);
     std::fprintf(stderr, "[boardghost] sim_set_active_display: device=%p\n", lgfx_device);
+}
+
+void* sim_get_active_display(void) {
+    return g_active_display.load();
 }
 
 // M2.D — NTP/timezone shims. Sketches that call configTime() expect time(),
