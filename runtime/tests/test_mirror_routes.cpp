@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include "sim_runtime.h"
 #include "sim_mirror.h"
+#include "sim_touch_inject.h"
 #include "LGFX_ILI9488_SDL.hpp"
 #include "../third_party/cpp-httplib/httplib.h"
 
@@ -108,7 +109,51 @@ TEST(MirrorRoutes, InfoScreenPngAndDisplayStream) {
     EXPECT_GE(audio.size(), 1764u);
     EXPECT_EQ(audio.size() % 2, 0u) << "S16 stream must be 2-byte aligned";
 
+    // POST /mirror/touch — the HTTP → parse → inject chain reaches the queue
+    // (Panel_sdl_bg consumption is covered in test_touch_inject).
+    auto tr = cli.Post("/mirror/touch", "{\"x\":70,\"y\":40,\"space\":\"raw\"}",
+                       "application/json");
+    ASSERT_TRUE((bool)tr);
+    EXPECT_EQ(tr->status, 200);
+    int ix = 0, iy = 0; bool iscreen = true;
+    ASSERT_TRUE(boardghost_pending_touch(ix, iy, iscreen));
+    EXPECT_EQ(ix, 70);
+    EXPECT_EQ(iy, 40);
+    EXPECT_FALSE(iscreen) << "space:raw must disable screen-space";
+    // Malformed body → 400, not a silent no-op.
+    auto bad = cli.Post("/mirror/touch", "nope", "application/json");
+    ASSERT_TRUE((bool)bad);
+    EXPECT_EQ(bad->status, 400);
+
     sim_set_active_display(nullptr);
     boardghost_mirror_stop();
     sim_runtime_shutdown();
+}
+
+// The input-injection route must honour the token gate: a LAN-bind operator's
+// token is the only thing standing between the network and synthetic input.
+TEST(MirrorTouchAuth, GatedRouteRejectsWithoutTokenAcceptsWithIt) {
+    const char* kTok = "s3cret-token-0123456789abcdef0123";
+    unsetenv("BOARDGHOST_DEVTOOLS");
+    unsetenv("BOARDGHOST_MIRROR");
+    setenv("BOARDGHOST_MIRROR_TOKEN", kTok, 1);
+    uint16_t port = pick_ephemeral_port();
+    setenv("BOARDGHOST_MIRROR_PORT", std::to_string(port).c_str(), 1);
+    boardghost_mirror_start();
+    wait_for_server(port);
+
+    httplib::Client cli("127.0.0.1", port);
+    cli.set_connection_timeout(2, 0);
+
+    auto no = cli.Post("/mirror/touch", "{\"x\":1,\"y\":2}", "application/json");
+    ASSERT_TRUE((bool)no);
+    EXPECT_EQ(no->status, 401) << "POST /mirror/touch must require the token";
+
+    httplib::Headers h{{"X-BoardGhost-Mirror", kTok}};
+    auto ok = cli.Post("/mirror/touch", h, "{\"x\":1,\"y\":2}", "application/json");
+    ASSERT_TRUE((bool)ok);
+    EXPECT_EQ(ok->status, 200);
+
+    boardghost_mirror_stop();
+    unsetenv("BOARDGHOST_MIRROR_TOKEN");
 }

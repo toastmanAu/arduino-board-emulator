@@ -9,6 +9,7 @@ using boardghost::mirror::authorized;
 using boardghost::mirror::build_info_json;
 using boardghost::mirror::decide_bind;
 using boardghost::mirror::frame_hash;
+using boardghost::mirror::parse_touch_body;
 using boardghost::mirror::token_equal;
 
 // ---------------------------------------------------------------------------
@@ -137,4 +138,67 @@ TEST(MirrorInfo, CarriesDimsFpsAudioAndEndpoints) {
     EXPECT_NE(j.find("/mirror/screen.png"), std::string::npos);
     EXPECT_NE(j.find("/mirror/display"), std::string::npos);
     EXPECT_NE(j.find("/mirror/audio"), std::string::npos);
+    EXPECT_NE(j.find("/mirror/touch"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// parse_touch_body — POST /mirror/touch JSON parsing.
+// ---------------------------------------------------------------------------
+
+TEST(MirrorTouchParse, ScreenSpaceExplicit) {
+    int x = 0, y = 0; bool screen = false;
+    ASSERT_TRUE(parse_touch_body("{\"x\":100,\"y\":50,\"space\":\"screen\"}", x, y, screen));
+    EXPECT_EQ(x, 100);
+    EXPECT_EQ(y, 50);
+    EXPECT_TRUE(screen);
+}
+
+TEST(MirrorTouchParse, RawSpace) {
+    int x = 0, y = 0; bool screen = true;
+    ASSERT_TRUE(parse_touch_body("{\"x\":12,\"y\":34,\"space\":\"raw\"}", x, y, screen));
+    EXPECT_EQ(x, 12);
+    EXPECT_EQ(y, 34);
+    EXPECT_FALSE(screen);
+}
+
+TEST(MirrorTouchParse, SpaceDefaultsToScreen) {
+    int x = 0, y = 0; bool screen = false;
+    ASSERT_TRUE(parse_touch_body("{\"x\":5,\"y\":6}", x, y, screen));
+    EXPECT_TRUE(screen);
+}
+
+TEST(MirrorTouchParse, ToleratesWhitespace) {
+    int x = 0, y = 0; bool screen = false;
+    ASSERT_TRUE(parse_touch_body("{ \"x\" : 7 , \"y\" : 8 }", x, y, screen));
+    EXPECT_EQ(x, 7);
+    EXPECT_EQ(y, 8);
+}
+
+TEST(MirrorTouchParse, MissingCoordIsRejected) {
+    int x = 0, y = 0; bool screen = false;
+    EXPECT_FALSE(parse_touch_body("{\"y\":8}", x, y, screen));
+    EXPECT_FALSE(parse_touch_body("{\"x\":7}", x, y, screen));
+    EXPECT_FALSE(parse_touch_body("garbage", x, y, screen));
+}
+
+TEST(MirrorTouchParse, ParsesNegativeCoord) {
+    int x = 0, y = 0; bool screen = false;
+    ASSERT_TRUE(parse_touch_body("{\"x\":-3,\"y\":7}", x, y, screen));
+    EXPECT_EQ(x, -3);
+    EXPECT_EQ(y, 7);
+}
+
+TEST(MirrorTouchParse, UnrelatedRawSubstringStaysScreen) {
+    int x = 0, y = 0; bool screen = false;
+    // A field whose value merely contains "raw" must NOT flip to raw space.
+    ASSERT_TRUE(parse_touch_body("{\"x\":1,\"y\":2,\"label\":\"redraw\"}", x, y, screen));
+    EXPECT_TRUE(screen);
+}
+
+TEST(MirrorTouchParse, HugeCoordIsClampedNotOverflowed) {
+    int x = 0, y = 0; bool screen = false;
+    std::string big = "{\"x\":" + std::string(60000, '9') + ",\"y\":5}";
+    ASSERT_TRUE(parse_touch_body(big, x, y, screen));
+    EXPECT_LE(x, 32767);  // clamped, no UB
+    EXPECT_GE(x, 0);
 }

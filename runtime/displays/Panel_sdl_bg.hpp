@@ -9,6 +9,7 @@
 // calibration completes — but only if Panel_sdl actually delegates to it.
 #pragma once
 #include <LovyanGFX.hpp>
+#include "sim_touch_inject.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
@@ -49,12 +50,36 @@ public:
         // produces pixel-space coords. Forcing identity on every read makes
         // the pixel-space coords pass through unchanged (rotation is still
         // applied downstream by convertRawXY).
+        // Runtime-injected tap (POST /mirror/touch). Queried once up front so it
+        // both forces identity calibration below and is emitted in the branch
+        // further down.
+        int inj_x = 0, inj_y = 0;
+        bool inj_screen = true;
+        bool have_inject = boardghost_pending_touch(inj_x, inj_y, inj_screen);
+
         if (std::getenv("BOARDGHOST_SIM_TOUCHES")
             || std::getenv("BOARDGHOST_AUTO_TOUCH_CAL")
-            || !screen_taps_.empty())
+            || !screen_taps_.empty()
+            || have_inject)
         {
             float identity[6] = {1, 0, 0, 0, 1, 0};
             setCalibrateAffine(identity);
+        }
+
+        // Emit the injected tap. Screen-space coords are de-rotated (same as the
+        // scripted screen_taps + live-mouse paths) so convertRawXY downstream
+        // cancels and lcd.getTouch() returns the coords the agent POSTed; raw
+        // coords pass straight through (pre-rotation escape hatch).
+        if (have_inject && count > 0 && tp != nullptr) {
+            if (inj_screen) {
+                inverse_rotate(inj_x, inj_y, tp[0]);
+            } else {
+                tp[0].x = (int16_t)inj_x;
+                tp[0].y = (int16_t)inj_y;
+                tp[0].size = 1;
+                tp[0].id = 0;
+            }
+            return 1;
         }
 
         // Screen-coord scripted touches: emit a press within an 80ms window

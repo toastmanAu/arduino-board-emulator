@@ -14,9 +14,11 @@
 #include "sim_mirror.h"
 #include "sim_capture.h"
 #include "sim_audio.h"
+#include "sim_touch_inject.h"
 #include "../third_party/cpp-httplib/httplib.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -136,7 +138,48 @@ std::string build_info_json(int w, int h, int fps) {
            ",\"fps\":" + std::to_string(fps) +
            ",\"audio\":{\"rate\":44100,\"channels\":1,\"bits\":16}" +
            ",\"endpoints\":[\"/mirror/info\",\"/mirror/screen.png\","
-           "\"/mirror/display\",\"/mirror/audio\"]}";
+           "\"/mirror/display\",\"/mirror/audio\",\"/mirror/touch\"]}";
+}
+
+namespace {
+// Pull an integer value for a JSON key `"<key>"` out of `b`. Tolerant of
+// surrounding whitespace; handles a leading sign. Returns false if the key or
+// a numeric value isn't found. (A hand parser, not a full JSON reader — the
+// runtime has no JSON dep and the body shape is fixed.)
+bool json_int(const std::string& b, const char* key, int& out) {
+    std::string pat = std::string("\"") + key + "\"";
+    size_t k = b.find(pat);
+    if (k == std::string::npos) return false;
+    size_t c = b.find(':', k + pat.size());
+    if (c == std::string::npos) return false;
+    size_t i = c + 1;
+    while (i < b.size() && std::isspace((unsigned char)b[i])) ++i;
+    bool neg = false;
+    if (i < b.size() && (b[i] == '-' || b[i] == '+')) { neg = (b[i] == '-'); ++i; }
+    if (i >= b.size() || !std::isdigit((unsigned char)b[i])) return false;
+    // Clamp accumulation: a 64 KB body could otherwise feed enough digits to
+    // overflow `long` (UB). No touch coordinate exceeds the panel dimensions,
+    // so cap the magnitude at INT16_MAX — also keeps the int16_t narrowing in
+    // Panel_sdl_bg exact rather than wrapping.
+    long v = 0;
+    while (i < b.size() && std::isdigit((unsigned char)b[i])) {
+        if (v <= 32767L) v = v * 10 + (b[i] - '0');
+        ++i;
+    }
+    if (v > 32767L) v = 32767L;
+    out = (int)(neg ? -v : v);
+    return true;
+}
+}  // namespace
+
+bool parse_touch_body(const std::string& body, int& x, int& y, bool& screen_space) {
+    if (!json_int(body, "x", x)) return false;
+    if (!json_int(body, "y", y)) return false;
+    // Default to screen space; only the explicit quoted "raw" value opts out.
+    // Matching the quoted token (not a bare "raw" substring) avoids tripping on
+    // unrelated fields like {"label":"drawback"} or a "rawmode" key.
+    screen_space = body.find("\"raw\"") == std::string::npos;
+    return true;
 }
 
 }  // namespace mirror
@@ -285,6 +328,26 @@ extern "C" void boardghost_mirror_start(void) {
                     return sink.write(reinterpret_cast<const char*>(buf),
                                       kChunk * sizeof(int16_t));  // false → gone
                 });
+        });
+
+    // POST /mirror/touch — the act half of the agentic loop (and the Android
+    // companion's touch-back). Body: {"x":N,"y":N,"space":"screen"|"raw"}.
+    // Token-gated by the /mirror/* pre-routing handler; body capped at 64 KB by
+    // set_payload_max_length above.
+    g_srv->Post("/mirror/touch",
+        [](const httplib::Request& req, httplib::Response& res) {
+            int x = 0, y = 0;
+            bool screen = true;
+            if (!boardghost::mirror::parse_touch_body(req.body, x, y, screen)) {
+                res.status = 400;
+                res.set_content(
+                    "{\"error\":\"expected {\\\"x\\\":N,\\\"y\\\":N,"
+                    "\\\"space\\\":\\\"screen|raw\\\"}\"}",
+                    "application/json");
+                return;
+            }
+            boardghost_inject_touch(x, y, screen ? 1 : 0);
+            res.set_content("{\"ok\":true}", "application/json");
         });
 
     if (!g_srv->bind_to_port(bind_addr, port)) {
