@@ -9,13 +9,18 @@
 use std::io::Read;
 
 /// Generate a random hex token (32 chars = 128 bits) for the mirror gate.
+///
+/// Reads 16 bytes from the OS CSPRNG (`/dev/urandom`; this is a Linux-only
+/// simulator) and FAILS LOUDLY on any error. A silent fall-back to a zeroed or
+/// partially-filled buffer would mint a predictable token guarding a LAN
+/// socket — strictly worse than aborting, so open/read errors panic with a
+/// clear message rather than returning a weak token.
 pub fn generate_token() -> String {
-    // 16 bytes of OS entropy → 32 hex chars. /dev/urandom avoids a `rand`
-    // dependency and is fine for a non-cryptographic-protocol bearer token.
     let mut bytes = [0u8; 16];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = f.read_exact(&mut bytes);
-    }
+    let mut f = std::fs::File::open("/dev/urandom")
+        .expect("mirror token: cannot open /dev/urandom for entropy");
+    f.read_exact(&mut bytes)
+        .expect("mirror token: short read from /dev/urandom");
     let mut s = String::with_capacity(32);
     for b in bytes {
         s.push_str(&format!("{:02x}", b));
@@ -58,6 +63,7 @@ mod tests {
         let t = generate_token();
         assert_eq!(t.len(), 32);
         assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(t, "0".repeat(32), "must never mint an all-zero token");
     }
 
     #[test]
