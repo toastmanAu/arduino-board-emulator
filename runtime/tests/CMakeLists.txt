@@ -37,8 +37,14 @@ add_executable(runtime_tests
     test_update.cpp
     test_ota.cpp
     test_mqtt.cpp
+    test_mirror_auth.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 
 include(GoogleTest)
-gtest_discover_tests(runtime_tests)
+# Keep the unit-test binary from binding the devtools/mirror TCP ports: every
+# test that calls sim_runtime_init() now triggers the eager server start, and
+# binding fixed ports per-test process is needless and flaky in CI sandboxes.
+# mirror_disabled()/devtools disabled() both honour BOARDGHOST_DEVTOOLS=off.
+# Phase 2's live-server checks live in the e2e shell harness, not here.
+gtest_discover_tests(runtime_tests PROPERTIES ENVIRONMENT "BOARDGHOST_DEVTOOLS=off")

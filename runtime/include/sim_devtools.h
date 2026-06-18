@@ -15,6 +15,12 @@
 extern "C" {
 #endif
 
+// Start the devtools HTTP server (idempotent). Called from runtime init so the
+// receipt/scanner UIs are up regardless of printer activity. The lazy
+// UART1-triggered start remains as a fallback. Always binds 127.0.0.1 — the
+// LAN-reachable surface lives in sim_mirror.cpp.
+void boardghost_devtools_start(void);
+
 // Append bytes to the in-memory printer ring buffer that /receipt renders.
 // Called from sim_uart.cpp whenever the sketch writes to UART1.
 void boardghost_devtools_record_uart_out(int port_nr, const uint8_t* buf, size_t n);

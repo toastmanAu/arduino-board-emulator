@@ -190,6 +190,9 @@ boardghost run --board st7789_esp32s3_sim \
 | `BOARDGHOST_OTA_PORT=N` | `ArduinoOTA` espota UDP listener port (default 3232; needs `BOARDGHOST_NET=real`). |
 | `BOARDGHOST_OTA_BIND=addr` | `ArduinoOTA` listener bind address (default `127.0.0.1`; set `0.0.0.0` for over-LAN IDE/`arduino-cli` flashing). |
 | `BOARDGHOST_OTA_PATH=/path/file.bin` | Where a received OTA firmware image is written (default `.boardghost/ota-firmware.bin`). |
+| `BOARDGHOST_MIRROR=off\|lan` | Mirror surface (agentic/companion observe+act). Default loopback; `lan` binds `0.0.0.0` **only if** a token is set, else warns and stays loopback. `off` disables it entirely. |
+| `BOARDGHOST_MIRROR_PORT=N` | Mirror HTTP port (default 18082; distinct from the loopback devtools port 18081 so both coexist). |
+| `BOARDGHOST_MIRROR_TOKEN=secret` | Required for a LAN bind; gates all `/mirror/*` via the `X-BoardGhost-Mirror` header. Use ≥32 random chars (no 401 throttling). |
 
 ### Driving a sketch from a test script
 

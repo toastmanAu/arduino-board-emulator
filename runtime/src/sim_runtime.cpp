@@ -1,4 +1,6 @@
 #include "sim_runtime.h"
+#include "sim_devtools.h"
+#include "sim_mirror.h"
 #include <Arduino.h>
 #include <SDL.h>
 #include <LovyanGFX.hpp>
@@ -134,9 +136,17 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     // This runs independently of the sketch so screenshots fire even when the
     // main thread is blocked in drawing calls (e.g. calibrateTouch).
     std::thread(screenshot_watcher_thread).detach();
+
+    // Bring up the observe/act HTTP surfaces up front so they don't depend on
+    // sketch activity (printer write / first tone). Both are idempotent and
+    // honour their own off-switches; the mirror stays on loopback unless
+    // explicitly given BOARDGHOST_MIRROR=lan + a token.
+    boardghost_devtools_start();
+    boardghost_mirror_start();
 }
 
 void sim_runtime_shutdown(void) {
+    boardghost_mirror_stop();
     SDL_DelEventWatch(quit_event_watch, nullptr);
     lgfx::Panel_sdl::close();
     SDL_Quit();
