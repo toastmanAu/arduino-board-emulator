@@ -87,6 +87,13 @@ uint64_t frame_hash(const std::vector<uint16_t>& fb);
 // list for feature detection.
 std::string build_info_json(int w, int h, int fps);
 
+// Parse a POST /mirror/touch body: {"x":N,"y":N,"space":"screen"|"raw"}.
+// `space` defaults to "screen" when absent. Returns false when x or y is
+// missing/unparseable (→ the route answers 400). Coordinates are returned
+// verbatim (sign preserved); range validation is the caller's job.
+bool parse_touch_body(const std::string& body, int& x, int& y,
+                      bool& screen_space);
+
 }  // namespace mirror
 }  // namespace boardghost
 #endif
