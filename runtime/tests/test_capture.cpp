@@ -67,3 +67,24 @@ TEST(Capture, EncodeJpegRejectsBadArgs) {
     uint16_t one = 0;
     EXPECT_FALSE(boardghost::encode_jpeg(&one, 0, 16, 90, out));
 }
+
+// encode_png produces a valid PNG (8-byte signature 89 50 4E 47 0D 0A 1A 0A).
+TEST(Capture, EncodePngProducesPngMagic) {
+    const int w = 16, h = 16;
+    std::vector<uint16_t> buf(static_cast<size_t>(w) * h, 0x07E0);  // solid green
+    std::vector<uint8_t> out;
+
+    bool ok = boardghost::encode_png(buf.data(), w, h, out);
+
+    ASSERT_TRUE(ok);
+    ASSERT_GE(out.size(), 8u);
+    const uint8_t sig[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    for (int i = 0; i < 8; ++i) EXPECT_EQ(out[i], sig[i]) << "PNG sig byte " << i;
+}
+
+TEST(Capture, EncodePngRejectsBadArgs) {
+    std::vector<uint8_t> out;
+    EXPECT_FALSE(boardghost::encode_png(nullptr, 16, 16, out));
+    uint16_t one = 0;
+    EXPECT_FALSE(boardghost::encode_png(&one, 16, 0, out));
+}

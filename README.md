@@ -193,6 +193,7 @@ boardghost run --board st7789_esp32s3_sim \
 | `BOARDGHOST_MIRROR=off\|lan` | Mirror surface (agentic/companion observe+act). Default loopback; `lan` binds `0.0.0.0` **only if** a token is set, else warns and stays loopback. `off` disables it entirely. |
 | `BOARDGHOST_MIRROR_PORT=N` | Mirror HTTP port (default 18082; distinct from the loopback devtools port 18081 so both coexist). |
 | `BOARDGHOST_MIRROR_TOKEN=secret` | Required for a LAN bind; gates all `/mirror/*` via the `X-BoardGhost-Mirror` header. Use ≥32 random chars (no 401 throttling). |
+| `BOARDGHOST_MIRROR_FPS=N` | Display stream (`/mirror/display`) frame cap, 1..60 (default 15). Unchanged frames are skipped, so an idle board costs ~0. |
 
 ### Driving a sketch from a test script
 

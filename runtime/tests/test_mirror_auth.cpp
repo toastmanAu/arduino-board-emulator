@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 #include "sim_mirror.h"
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 using boardghost::mirror::authorized;
+using boardghost::mirror::build_info_json;
 using boardghost::mirror::decide_bind;
+using boardghost::mirror::frame_hash;
 using boardghost::mirror::token_equal;
 
 // ---------------------------------------------------------------------------
@@ -95,4 +99,41 @@ TEST(MirrorAuth, ConfiguredTokenRequiresAMatch) {
 
 TEST(MirrorAuth, HeaderTokenAuthorizes) {
     EXPECT_TRUE(authorized("tok", /*header=*/"tok"));
+}
+
+// ---------------------------------------------------------------------------
+// frame_hash — change detection for the MJPEG stream.
+// ---------------------------------------------------------------------------
+
+TEST(MirrorFrameHash, IdenticalBuffersHashEqual) {
+    std::vector<uint16_t> a(256, 0xF800);
+    std::vector<uint16_t> b(256, 0xF800);
+    EXPECT_EQ(frame_hash(a), frame_hash(b));
+}
+
+TEST(MirrorFrameHash, SinglePixelChangeChangesHash) {
+    std::vector<uint16_t> a(256, 0xF800);
+    std::vector<uint16_t> b = a;
+    b[123] = 0x07E0;
+    EXPECT_NE(frame_hash(a), frame_hash(b));
+}
+
+TEST(MirrorFrameHash, DifferentLengthChangesHash) {
+    std::vector<uint16_t> a(256, 0);
+    std::vector<uint16_t> b(255, 0);
+    EXPECT_NE(frame_hash(a), frame_hash(b));
+}
+
+// ---------------------------------------------------------------------------
+// build_info_json — feature-detection payload.
+// ---------------------------------------------------------------------------
+
+TEST(MirrorInfo, CarriesDimsFpsAudioAndEndpoints) {
+    std::string j = build_info_json(320, 480, 15);
+    EXPECT_NE(j.find("\"w\":320"), std::string::npos);
+    EXPECT_NE(j.find("\"h\":480"), std::string::npos);
+    EXPECT_NE(j.find("\"fps\":15"), std::string::npos);
+    EXPECT_NE(j.find("\"rate\":44100"), std::string::npos);
+    EXPECT_NE(j.find("/mirror/screen.png"), std::string::npos);
+    EXPECT_NE(j.find("/mirror/display"), std::string::npos);
 }

@@ -26,4 +26,8 @@ bool capture_active_rgb565(std::vector<uint16_t>& out, int& w, int& h);
 bool encode_jpeg(const uint16_t* rgb565, int w, int h, int quality,
                  std::vector<uint8_t>& out);
 
+// Encode an RGB565 buffer (size w*h) to PNG bytes (lossless; the on-demand
+// /mirror/screen.png path). Returns false on bad args or encoder failure.
+bool encode_png(const uint16_t* rgb565, int w, int h, std::vector<uint8_t>& out);
+
 }  // namespace boardghost

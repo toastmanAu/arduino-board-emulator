@@ -38,6 +38,7 @@ add_executable(runtime_tests
     test_ota.cpp
     test_mqtt.cpp
     test_mirror_auth.cpp
+    test_mirror_routes.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 

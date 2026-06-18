@@ -38,7 +38,9 @@ void boardghost_mirror_stop(void);
 #endif
 
 #ifdef __cplusplus
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace boardghost {
 namespace mirror {
@@ -74,6 +76,16 @@ bool token_equal(const std::string& a, const std::string& b);
 // MJPEG case (which cannot set headers) is a Phase 2 concern and will get its
 // own scoped, separately-reviewed mechanism — not a global ?token= channel.
 bool authorized(const std::string& configured, const std::string& header);
+
+// Cheap hash of a framebuffer, used by the /mirror/display MJPEG loop to skip
+// re-encoding (and re-sending) frames that haven't changed. Equal pixels MUST
+// produce equal hashes; a single changed pixel SHOULD change the hash.
+uint64_t frame_hash(const std::vector<uint16_t>& fb);
+
+// Build the /mirror/info JSON advertised to agents and the companion app:
+// dimensions, the display stream cap, the fixed audio format, and the route
+// list for feature detection.
+std::string build_info_json(int w, int h, int fps);
 
 }  // namespace mirror
 }  // namespace boardghost

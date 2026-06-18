@@ -12,15 +12,18 @@
 // arrive in Phases 2–4.
 
 #include "sim_mirror.h"
+#include "sim_capture.h"
 #include "../third_party/cpp-httplib/httplib.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -60,6 +63,14 @@ uint16_t mirror_port() {
         if (p > 0 && p < 65536) return (uint16_t)p;
     }
     return 18082;  // distinct from devtools 18081 so both coexist
+}
+
+int mirror_fps() {
+    if (const char* env = std::getenv("BOARDGHOST_MIRROR_FPS"); env && *env) {
+        int f = std::atoi(env);
+        if (f >= 1 && f <= 60) return f;
+    }
+    return 15;
 }
 
 }  // namespace
@@ -104,6 +115,26 @@ bool authorized(const std::string& configured, const std::string& header) {
     // implies we're on loopback.)
     if (configured.empty()) return true;
     return token_equal(configured, header);
+}
+
+uint64_t frame_hash(const std::vector<uint16_t>& fb) {
+    // FNV-1a over the pixels, seeded with the length so two buffers that differ
+    // only in size never collide (a resized display still reads as "changed").
+    uint64_t h = 1469598103934665603ULL ^ static_cast<uint64_t>(fb.size());
+    for (uint16_t px : fb) {
+        h = (h ^ px) * 1099511628211ULL;
+    }
+    return h;
+}
+
+std::string build_info_json(int w, int h, int fps) {
+    // Hand-built (no JSON dep in the runtime). Fixed audio format matches the
+    // sim_audio mix that Phase 3 will tap: 44.1 kHz mono S16.
+    return "{\"w\":" + std::to_string(w) +
+           ",\"h\":" + std::to_string(h) +
+           ",\"fps\":" + std::to_string(fps) +
+           ",\"audio\":{\"rate\":44100,\"channels\":1,\"bits\":16}" +
+           ",\"endpoints\":[\"/mirror/info\",\"/mirror/screen.png\",\"/mirror/display\"]}";
 }
 
 }  // namespace mirror
@@ -153,12 +184,85 @@ extern "C" void boardghost_mirror_start(void) {
             return httplib::Server::HandlerResponse::Unhandled;
         });
 
-    // Minimal liveness/feature-detection route. Phase 2 expands this with
-    // {w,h,fps,audio,endpoints}; for now it just proves the gate + bind work.
+    // GET /mirror/info — feature detection: dims (0 until a display registers),
+    // stream fps cap, fixed audio format, and the route list.
     g_srv->Get("/mirror/info",
         [](const httplib::Request&, httplib::Response& res) {
-            res.set_content("{\"name\":\"boardghost-mirror\",\"phase\":1}",
+            std::vector<uint16_t> fb; int w = 0, h = 0;
+            boardghost::capture_active_rgb565(fb, w, h);  // false → w/h stay 0
+            res.set_content(boardghost::mirror::build_info_json(w, h, mirror_fps()),
                             "application/json");
+        });
+
+    // GET /mirror/screen.png — on-demand single frame, the agent-loop observe
+    // primitive (no SIGUSR1, no delay race). ?stable=N captures until N
+    // consecutive identical frames (a settled screen) or a ~2s timeout.
+    g_srv->Get("/mirror/screen.png",
+        [](const httplib::Request& req, httplib::Response& res) {
+            std::vector<uint16_t> fb; int w = 0, h = 0;
+            if (!boardghost::capture_active_rgb565(fb, w, h)) {
+                res.status = 503;
+                res.set_content("no active display", "text/plain");
+                return;
+            }
+            if (req.has_param("stable")) {
+                int need = std::atoi(req.get_param_value("stable").c_str());
+                if (need < 2) need = 2;
+                uint64_t last = boardghost::mirror::frame_hash(fb);
+                int streak = 1;
+                auto deadline = std::chrono::steady_clock::now() +
+                                std::chrono::milliseconds(2000);
+                while (streak < need &&
+                       std::chrono::steady_clock::now() < deadline) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(33));
+                    std::vector<uint16_t> next; int nw = 0, nh = 0;
+                    if (!boardghost::capture_active_rgb565(next, nw, nh)) break;
+                    uint64_t hh = boardghost::mirror::frame_hash(next);
+                    if (hh == last) { ++streak; }
+                    else { last = hh; streak = 1; fb.swap(next); w = nw; h = nh; }
+                }
+            }
+            std::vector<uint8_t> png;
+            if (!boardghost::encode_png(fb.data(), w, h, png)) {
+                res.status = 500;
+                res.set_content("encode failed", "text/plain");
+                return;
+            }
+            res.set_content(reinterpret_cast<const char*>(png.data()), png.size(),
+                            "image/png");
+        });
+
+    // GET /mirror/display — live MJPEG (multipart/x-mixed-replace). One JPEG
+    // part per changed frame, paced to the fps cap; unchanged frames are
+    // skipped (no encode, no send) so an idle board costs ~0 CPU/bandwidth.
+    g_srv->Get("/mirror/display",
+        [](const httplib::Request&, httplib::Response& res) {
+            const int fps = mirror_fps();
+            const auto period = std::chrono::milliseconds(1000 / fps);
+            auto last = std::make_shared<uint64_t>(0);
+            auto have = std::make_shared<bool>(false);
+            res.set_chunked_content_provider(
+                "multipart/x-mixed-replace; boundary=frame",
+                [fps, period, last, have](size_t, httplib::DataSink& sink) -> bool {
+                    std::this_thread::sleep_for(period);  // pace ≤ fps
+                    std::vector<uint16_t> fb; int w = 0, h = 0;
+                    if (!boardghost::capture_active_rgb565(fb, w, h)) {
+                        return true;  // no display yet — keep the connection alive
+                    }
+                    uint64_t hh = boardghost::mirror::frame_hash(fb);
+                    if (*have && hh == *last) return true;  // unchanged — skip
+                    std::vector<uint8_t> jpg;
+                    if (!boardghost::encode_jpeg(fb.data(), w, h, 70, jpg)) return true;
+                    *last = hh; *have = true;
+                    std::string head = "--frame\r\nContent-Type: image/jpeg\r\n"
+                                       "Content-Length: " + std::to_string(jpg.size()) +
+                                       "\r\n\r\n";
+                    if (!sink.write(head.data(), head.size())) return false;
+                    if (!sink.write(reinterpret_cast<const char*>(jpg.data()),
+                                    jpg.size())) return false;
+                    if (!sink.write("\r\n", 2)) return false;  // client gone
+                    return true;
+                });
         });
 
     if (!g_srv->bind_to_port(bind_addr, port)) {
