@@ -30,6 +30,7 @@ export interface RunOptions {
   auto_touch_cal: boolean;
   sim_touches_screen: string;
   screenshot_delay_ms: number;
+  mirror: boolean;
 }
 
 export const defaultRunOptions = (): RunOptions => ({
@@ -37,6 +38,7 @@ export const defaultRunOptions = (): RunOptions => ({
   auto_touch_cal: false,
   sim_touches_screen: "",
   screenshot_delay_ms: 0,
+  mirror: false,
 });
 
 export async function buildAndRun(

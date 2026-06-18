@@ -28,6 +28,10 @@
 #include <thread>
 #include <vector>
 
+// mDNS advertisement (sim_mirror_mdns.cpp) — only meaningful on a LAN bind.
+extern "C" void boardghost_mirror_mdns_advertise(uint16_t port);
+extern "C" void boardghost_mirror_mdns_stop(void);
+
 namespace {
 
 // Cap any request body a future mirror route might read. Phase 1 has no POST
@@ -364,9 +368,13 @@ extern "C" void boardghost_mirror_start(void) {
     });
     std::fprintf(stderr, "[boardghost] mirror: http://%s:%u/mirror/info%s\n",
                  bind_addr, port, decision.bind_lan ? " (LAN, token required)" : "");
+
+    // Advertise for discovery only when actually reachable from the LAN.
+    if (decision.bind_lan) boardghost_mirror_mdns_advertise(port);
 }
 
 extern "C" void boardghost_mirror_stop(void) {
+    boardghost_mirror_mdns_stop();
     if (g_srv) g_srv->stop();
     if (g_thread.joinable()) g_thread.join();
     g_srv.reset();

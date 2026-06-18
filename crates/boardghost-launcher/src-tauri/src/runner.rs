@@ -21,6 +21,9 @@ pub struct RunOptions {
     pub sim_touches_screen: String,
     /// Milliseconds before screenshot fires (0 = default 2000ms in CLI).
     pub screenshot_delay_ms: u32,
+    /// Expose the mirror on the LAN (passes --mirror to the CLI, which
+    /// generates a token and prints the pairing URL). Off = loopback only.
+    pub mirror: bool,
 }
 
 /// Spawn `boardghost run <project> --board <board>` as a child process.
@@ -48,6 +51,12 @@ pub async fn spawn(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if opts.mirror {
+        // Let the CLI generate the token and print the pairing banner (it
+        // surfaces on the build-log via stderr).
+        cmd.arg("--mirror");
+    }
 
     if !opts.net_mode.is_empty() {
         cmd.env("BOARDGHOST_NET", &opts.net_mode);

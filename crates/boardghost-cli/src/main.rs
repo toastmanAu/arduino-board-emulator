@@ -30,11 +30,28 @@ fn main() -> Result<()> {
             board,
             profile,
             screenshot,
+            mirror,
+            mirror_token,
         } => {
             let boards = boards_dir()?;
             let runtime = runtime_dir()?;
             let release = matches!(profile, BuildProfile::Release);
             let r = boardghost::build::run_build(&project, &board, &boards, &runtime, release)?;
+            if mirror {
+                // Enable the LAN bind + token gate the runtime reads, and tell
+                // the user how to pair. The child sketch inherits this env.
+                let token = mirror_token.unwrap_or_else(boardghost::mirror::generate_token);
+                std::env::set_var("BOARDGHOST_MIRROR", "lan");
+                std::env::set_var("BOARDGHOST_MIRROR_TOKEN", &token);
+                let port: u16 = std::env::var("BOARDGHOST_MIRROR_PORT")
+                    .ok()
+                    .and_then(|p| p.parse().ok())
+                    .unwrap_or(18082);
+                let ip =
+                    boardghost::mirror::detect_lan_ip().unwrap_or_else(|| "0.0.0.0".to_string());
+                let url = boardghost::mirror::mirror_url(&ip, port);
+                eprint!("{}", boardghost::mirror::pairing_banner(&url, &token));
+            }
             match eeprom_seed::auto_restore_if_missing(&project)? {
                 Some(seed) => eprintln!(
                     "→ EEPROM seed: restored {} → .boardghost/eeprom.bin (live EEPROM was missing)",

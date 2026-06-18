@@ -11,6 +11,10 @@ fn default_options_are_all_empty_or_off() {
     assert!(!opts.auto_touch_cal);
     assert!(opts.sim_touches_screen.is_empty());
     assert_eq!(opts.screenshot_delay_ms, 0);
+    assert!(
+        !opts.mirror,
+        "mirror must default off — LAN exposure is opt-in"
+    );
 }
 
 #[test]
@@ -19,13 +23,15 @@ fn deserialises_from_ui_payload() {
         "net_mode": "real",
         "auto_touch_cal": true,
         "sim_touches_screen": "3000:160,125",
-        "screenshot_delay_ms": 8000
+        "screenshot_delay_ms": 8000,
+        "mirror": true
     }"#;
     let opts: RunOptions = serde_json::from_str(json).expect("parse");
     assert_eq!(opts.net_mode, "real");
     assert!(opts.auto_touch_cal);
     assert_eq!(opts.sim_touches_screen, "3000:160,125");
     assert_eq!(opts.screenshot_delay_ms, 8000);
+    assert!(opts.mirror);
 }
 
 #[test]

@@ -13,6 +13,7 @@ pub mod lgfx_codemod;
 pub mod lib_resolve;
 pub mod libraries;
 pub mod library_overrides;
+pub mod mirror;
 pub mod ota;
 pub mod preprocess;
 pub mod run;

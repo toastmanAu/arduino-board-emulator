@@ -44,6 +44,13 @@
       />
     </label>
   </div>
+
+  <div class="row">
+    <label class="checkbox">
+      <input type="checkbox" bind:checked={options.mirror} />
+      <span>Mirror to LAN (a token + pairing URL are printed to the log)</span>
+    </label>
+  </div>
 </section>
 
 <style>

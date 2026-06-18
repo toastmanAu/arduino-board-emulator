@@ -35,6 +35,15 @@ pub enum Command {
         /// (and the CLI will fire SIGUSR1 once 2 seconds after launch).
         #[arg(long, value_name = "PNG_PATH")]
         screenshot: Option<PathBuf>,
+        /// Expose the mirror (observe+act surface) on the LAN, not just
+        /// loopback. Generates a random token unless --mirror-token is given,
+        /// and prints a pairing URL + token for an agent / the companion app.
+        #[arg(long, default_value_t = false)]
+        mirror: bool,
+        /// Token gating all /mirror/* routes when --mirror is set. Random if
+        /// omitted.
+        #[arg(long, value_name = "TOKEN")]
+        mirror_token: Option<String>,
     },
     /// Snapshot or restore a sketch's EEPROM state. Snapshot once after
     /// completing the in-sketch setup flow; future launches auto-restore from

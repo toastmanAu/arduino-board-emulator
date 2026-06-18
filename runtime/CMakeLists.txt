@@ -34,6 +34,7 @@ add_library(sim_runtime STATIC
     src/sim_uart.cpp
     src/sim_devtools.cpp
     src/sim_mirror.cpp
+    src/sim_mirror_mdns.cpp
     src/sim_touch_inject.cpp
     third_party/cpp-httplib/httplib.cpp
 )
