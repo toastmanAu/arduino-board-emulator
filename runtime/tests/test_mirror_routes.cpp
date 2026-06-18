@@ -40,6 +40,10 @@ void wait_for_server(uint16_t port) {
 
 TEST(MirrorRoutes, InfoScreenPngAndDisplayStream) {
     setenv("SDL_VIDEODRIVER", "dummy", 1);
+    // Deterministic audio stream regardless of CI audio support: with sound
+    // off the tap ring stays empty and /mirror/audio emits padded silence at a
+    // steady cadence — exactly the underrun-proofing we want to assert.
+    setenv("BOARDGHOST_SOUND", "off", 1);
     // Keep the eager servers off during init (the suite already sets
     // BOARDGHOST_DEVTOOLS=off); we start ONLY the mirror, by hand, below.
     sim_runtime_init(0, nullptr);
@@ -93,6 +97,16 @@ TEST(MirrorRoutes, InfoScreenPngAndDisplayStream) {
     ASSERT_NE(soi, std::string::npos);
     EXPECT_EQ((uint8_t)acc[soi + 4], 0xFF);
     EXPECT_EQ((uint8_t)acc[soi + 5], 0xD8);  // JPEG Start-Of-Image
+
+    // /mirror/audio — chunked PCM at a steady cadence. Read at least one full
+    // 20ms S16 mono chunk (882 samples * 2 bytes = 1764).
+    std::string audio;
+    cli.Get("/mirror/audio", [&](const char* d, size_t n) {
+        audio.append(d, n);
+        return audio.size() < 1764;
+    });
+    EXPECT_GE(audio.size(), 1764u);
+    EXPECT_EQ(audio.size() % 2, 0u) << "S16 stream must be 2-byte aligned";
 
     sim_set_active_display(nullptr);
     boardghost_mirror_stop();

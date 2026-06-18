@@ -136,4 +136,5 @@ TEST(MirrorInfo, CarriesDimsFpsAudioAndEndpoints) {
     EXPECT_NE(j.find("\"rate\":44100"), std::string::npos);
     EXPECT_NE(j.find("/mirror/screen.png"), std::string::npos);
     EXPECT_NE(j.find("/mirror/display"), std::string::npos);
+    EXPECT_NE(j.find("/mirror/audio"), std::string::npos);
 }

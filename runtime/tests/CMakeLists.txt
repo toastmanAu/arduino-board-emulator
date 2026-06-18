@@ -39,6 +39,7 @@ add_executable(runtime_tests
     test_mqtt.cpp
     test_mirror_auth.cpp
     test_mirror_routes.cpp
+    test_spsc_ring.cpp
 )
 target_link_libraries(runtime_tests PRIVATE sim_runtime GTest::gtest_main)
 

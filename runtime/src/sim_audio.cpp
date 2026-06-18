@@ -17,10 +17,13 @@
 //   - BOARDGHOST_SOUND=off skips SDL audio init entirely; the shim then
 //     becomes silent (sketch keeps booting as if it had no speaker).
 
+#include "spsc_ring.h"
+
 #include <SDL.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -41,6 +44,11 @@ struct LedcChannel {
 LedcChannel        g_channels[kNumChannels];
 std::mutex         g_mutex;
 SDL_AudioDeviceID  g_dev = 0;
+
+// Mirror tap: the audio callback (sole producer) pushes every mixed sample;
+// the /mirror/audio HTTP thread (sole consumer) drains. ~0.74s at 44.1kHz mono
+// — enough to absorb HTTP scheduling jitter without unbounded latency.
+boardghost::SpscRing<int16_t, 1u << 15> g_audio_ring;
 std::atomic<bool>  g_init_attempted{false};
 std::atomic<bool>  g_init_failed{false};
 
@@ -103,6 +111,10 @@ void audio_callback(void* /*ud*/, Uint8* stream, int len) {
         int sample = (int)(mixed * 32767);
         sample = std::clamp(sample, -32767, 32767);
         out[i] = (int16_t)sample;
+        // Tap for the mirror. Lock-free by contract (see g_audio_ring) so the
+        // real-time audio thread never blocks; drops silently when no consumer
+        // is draining (ring full).
+        g_audio_ring.push(out[i]);
     }
     // Persist the advanced phases back so the next callback continues
     // smoothly. We do this outside the audio loop above to minimize
@@ -160,6 +172,20 @@ void boardghost_ledc_set_tone(uint8_t channel, double freq_hz) {
     if (g_init_failed.load()) return;
     std::lock_guard<std::mutex> lk(g_mutex);
     g_channels[channel].freq_hz = freq_hz > 0.0 ? freq_hz : 0.0;
+}
+
+// Force the audio device open even if the sketch hasn't played a tone yet, so
+// the mirror audio stream produces a steady sample cadence (silence when idle)
+// instead of nothing. No-op when BOARDGHOST_SOUND=off (stays silent).
+void boardghost_audio_ensure_started(void) {
+    ensure_audio_init();
+}
+
+// Consumer side of the mirror tap. Copies up to `max` samples into dst, returns
+// the count actually available (0 when the ring is empty / audio is disabled).
+size_t boardghost_audio_drain(int16_t* dst, size_t max) {
+    if (!dst || max == 0) return 0;
+    return g_audio_ring.drain(dst, max);
 }
 
 void boardghost_ledc_set_duty(uint8_t channel, uint32_t duty, uint8_t max_bits) {

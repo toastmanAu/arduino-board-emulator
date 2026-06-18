@@ -13,6 +13,7 @@
 
 #include "sim_mirror.h"
 #include "sim_capture.h"
+#include "sim_audio.h"
 #include "../third_party/cpp-httplib/httplib.h"
 
 #include <atomic>
@@ -134,7 +135,8 @@ std::string build_info_json(int w, int h, int fps) {
            ",\"h\":" + std::to_string(h) +
            ",\"fps\":" + std::to_string(fps) +
            ",\"audio\":{\"rate\":44100,\"channels\":1,\"bits\":16}" +
-           ",\"endpoints\":[\"/mirror/info\",\"/mirror/screen.png\",\"/mirror/display\"]}";
+           ",\"endpoints\":[\"/mirror/info\",\"/mirror/screen.png\","
+           "\"/mirror/display\",\"/mirror/audio\"]}";
 }
 
 }  // namespace mirror
@@ -262,6 +264,26 @@ extern "C" void boardghost_mirror_start(void) {
                                     jpg.size())) return false;
                     if (!sink.write("\r\n", 2)) return false;  // client gone
                     return true;
+                });
+        });
+
+    // GET /mirror/audio — chunked raw PCM (S16LE mono, 44.1 kHz). Forces the
+    // audio device open so a steady cadence flows even before the first tone;
+    // each ~20ms tick drains the tap ring and pads with silence so the client
+    // (Android AudioTrack) never underruns. BOARDGHOST_SOUND=off → all silence.
+    g_srv->Get("/mirror/audio",
+        [](const httplib::Request&, httplib::Response& res) {
+            boardghost_audio_ensure_started();
+            res.set_chunked_content_provider(
+                "application/octet-stream",
+                [](size_t, httplib::DataSink& sink) -> bool {
+                    constexpr size_t kChunk = 882;  // ~20ms @ 44.1kHz mono
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    int16_t buf[kChunk];
+                    size_t got = boardghost_audio_drain(buf, kChunk);
+                    for (size_t i = got; i < kChunk; ++i) buf[i] = 0;  // pad
+                    return sink.write(reinterpret_cast<const char*>(buf),
+                                      kChunk * sizeof(int16_t));  // false → gone
                 });
         });
 
