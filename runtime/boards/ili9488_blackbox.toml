@@ -1,0 +1,14 @@
+name              = "ili9488_blackbox"
+description       = "ESP32-WROOM Blackbox POS — ILI9488 320x480 portrait SPI display"
+arduino_fqbn_hint = "esp32:esp32:esp32"
+
+[display]
+controller   = "ILI9488"
+width        = 320
+height       = 480
+rotation     = 0
+bus          = "spi"
+color_depth  = 16
+
+[touch]
+controller   = "xpt2046"
