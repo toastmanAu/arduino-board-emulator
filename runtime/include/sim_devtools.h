@@ -21,6 +21,15 @@ extern "C" {
 // LAN-reachable surface lives in sim_mirror.cpp.
 void boardghost_devtools_start(void);
 
+// Stop the devtools server and JOIN its thread. Must be called before the
+// process returns from main(): g_thread is a namespace-scope std::thread, and
+// ~thread() on a still-joinable thread calls std::terminate(). That aborts at
+// static-destruction time — after the sketch has printed everything and looks
+// like it succeeded — so it surfaces as "terminate called without an active
+// exception" and a non-zero exit from an otherwise clean run.
+// Mirrors boardghost_mirror_stop(). Idempotent.
+void boardghost_devtools_stop(void);
+
 // Append bytes to the in-memory printer ring buffer that /receipt renders.
 // Called from sim_uart.cpp whenever the sketch writes to UART1.
 void boardghost_devtools_record_uart_out(int port_nr, const uint8_t* buf, size_t n);

@@ -142,11 +142,34 @@ void sim_runtime_init(int /*argc*/, char** /*argv*/) {
     // honour their own off-switches; the mirror stays on loopback unless
     // explicitly given BOARDGHOST_MIRROR=lan + a token.
     boardghost_devtools_start();
+
+    // Sketches are allowed to end by calling exit() from loop(), and every
+    // example in this repo does exactly that — so sim_main() never returns and
+    // sim_runtime_shutdown() would never run. exit() then destroys the
+    // namespace-scope std::thread globals (devtools, mirror) while they are
+    // still joinable, and ~thread() on a joinable thread calls std::terminate().
+    //
+    // The result is an abort AFTER the sketch has printed everything and looks
+    // successful: "terminate called without an active exception" and a non-zero
+    // exit from a run that did all its work. Every e2e script that asserts on
+    // exit status fails, pointing nowhere near the cause.
+    //
+    // exit() runs atexit handlers BEFORE static destructors, so joining here is
+    // enough. (_exit() skips both, so it needs no handling.)
+    std::atexit([]() { sim_runtime_shutdown(); });
     boardghost_mirror_start();
 }
 
 void sim_runtime_shutdown(void) {
+    // Idempotent: this runs either from sim_main() returning normally, or from
+    // the atexit handler registered in sim_runtime_init() — and on a sketch that
+    // returns from loop() rather than calling exit(), from both.
+    static bool done = false;
+    if (done) return;
+    done = true;
+
     boardghost_mirror_stop();
+    boardghost_devtools_stop();   // joins its thread; see sim_devtools.h
     SDL_DelEventWatch(quit_event_watch, nullptr);
     lgfx::Panel_sdl::close();
     SDL_Quit();

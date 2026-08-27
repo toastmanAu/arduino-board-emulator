@@ -519,6 +519,13 @@ extern "C" void boardghost_devtools_start(void) {
     start_server();  // idempotent; binds 127.0.0.1 only
 }
 
+extern "C" void boardghost_devtools_stop(void) {
+    if (g_srv) g_srv->stop();
+    if (g_thread.joinable()) g_thread.join();
+    g_srv.reset();
+    g_running.store(false);
+}
+
 extern "C" void boardghost_devtools_record_uart_out(int port_nr, const uint8_t* buf, size_t n) {
     if (port_nr != 1 || !buf || n == 0) return;  // only UART1 (printer) for now
     start_server();   // lazy init on first byte
