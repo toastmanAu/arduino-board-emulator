@@ -165,13 +165,25 @@ target_link_libraries(sim_runtime PUBLIC lovyangfx_pc)
 # LVGL — use its own CMake. lv_conf.h sits at runtime/lv_conf.h.
 # LVGL looks for lv_conf.h via `LV_CONF_PATH` or by include search.
 set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h CACHE STRING "lv_conf path")
+# LVGL >= 9.3 renamed this knob LV_CONF_PATH -> LV_BUILD_CONF_PATH. Setting only
+# the old name makes 9.5 silently fall through to "lv_conf.h from the top-level
+# project directory" — which, for a boardghost sketch build, is the generated
+# .boardghost/<board>/ dir, not runtime/ — and configure fails with
+# "Configuration file: .../lv_conf.h - not found". Set both so this works
+# against 9.2 and 9.5 alike.
+set(LV_BUILD_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h CACHE STRING "lv_conf path (LVGL >= 9.3)")
 set(LV_CONF_BUILD_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
 set(LV_CONF_BUILD_DISABLE_DEMOS    ON CACHE BOOL "" FORCE)
 add_subdirectory(third_party/lvgl)
 
 target_link_libraries(sim_runtime PUBLIC lvgl)
 # Make sure both LovyanGFX users and LVGL users see the lv_conf.h location.
-target_compile_definitions(sim_runtime PUBLIC LV_CONF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h)
+# NOTE the quotes: lv_conf_internal.h does `#include LV_CONF_PATH`, so the macro
+# must expand to a quoted string. Unquoted, LVGL 9.5 fails with
+# "#include expects \"FILENAME\" or <FILENAME>", no lv_conf.h is loaded at all,
+# and every LV_USE_* silently falls back to its default — which is how
+# lv_sdl_window_create disappears (LV_USE_SDL defaults to 0).
+target_compile_definitions(sim_runtime PUBLIC LV_CONF_PATH="${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h")
 
 # sim_main is a separate object library; sketch builds link it,
 # unit-test builds do not (they bring their own gtest_main).

@@ -22,6 +22,14 @@ public:
 
     void   begin(uint16_t /*heatTime*/ = 120)        { esc_("\x1B\x40", 2); /* ESC @ — reset */ }
     void   reset()                                   { esc_("\x1B\x40", 2); }
+    // ESC 7 n1 n2 n3 — print-head heat config (dots, heat time, heat interval).
+    // Real Adafruit_Thermal exposes this; begin() calls it internally with these
+    // same defaults. Sketches that want to tune print darkness must call it
+    // explicitly, because begin()'s single argument is a FIRMWARE VERSION flag,
+    // not a heat setting. Emitted here so sim transcripts match the wire.
+    void   setHeatConfig(uint8_t dots = 11, uint8_t time = 120, uint8_t interval = 40)
+                                                     { const char b[5] = { 0x1B, '7', (char)dots, (char)time, (char)interval };
+                                                       esc_(b, 5); }
     void   setDefault()                              { esc_("\x1B\x40", 2); }
 
     void   print(const char* s)                      { emit_(s); }
