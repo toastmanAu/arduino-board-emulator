@@ -1,6 +1,8 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 // Must match the destination used by `build::run` when mirroring the sketch
 // `data/` dir — see spiffs_mirror::mirror_sketch_data. Kept in one place so the
@@ -48,12 +50,30 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
     let mut child = cmd.spawn()?;
 
     // If a screenshot was requested, send SIGUSR1 after a short settle delay,
-    // then wait for the screenshot file to appear and kill the sketch.
-    // The sketch may never exit on its own (e.g. stuck in calibrateTouch), so
-    // we kill it after the screenshot is captured.
+    // then wait for the screenshot file to appear.
+    //
+    // A sketch may never exit on its own (stuck in calibrateTouch, or an
+    // ordinary forever-loop), so it has to be killed once the frame is
+    // captured. But plenty of sketches DO end on their own — every example in
+    // this repo finishes by calling exit(0) from loop() — and killing those the
+    // instant the PNG lands truncates a run that was about to succeed. That is
+    // a race between two lifecycle owners: whoever gets there first wins, and
+    // which one that is depends on how long setup() happens to take.
+    //
+    // It bit tests/e2e/lgfx_codemod_smoke.sh, which asserts on the sketch's
+    // final "done" line: the screenshot fired at the 2000ms settle and killed
+    // the sketch before it reached that line, so the suite failed while the
+    // captured screenshot was perfectly good.
+    //
+    // So: capture, then give the sketch a grace window to finish by itself, and
+    // only SIGTERM if it is genuinely still running. `finished` is set the
+    // moment child.wait() reaps, so we never signal a pid we have already
+    // reaped.
     if let Some(screenshot_path) = screenshot {
         let pid = child.id();
         let screenshot_path = screenshot_path.to_path_buf();
+        let finished = Arc::new(AtomicBool::new(false));
+        let finished_t = Arc::clone(&finished);
         // Allow overriding the settle delay before screenshot via env var
         // (default 2000ms). Sketches with heavy setup() — JPG decode, touch
         // calibration, network connect — need more time to reach the visible
@@ -62,8 +82,20 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(2000);
+        // How long to let a self-terminating sketch finish after the capture
+        // before forcing it down. Overridable for sketches with slow teardown.
+        let grace_ms: u64 = std::env::var("BOARDGHOST_SCREENSHOT_GRACE_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(5000);
         let screenshot_thread = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(settle_ms));
+            // The sketch may already have run to completion during the settle;
+            // signalling a reaped pid is at best useless and at worst hits an
+            // unrelated process.
+            if finished_t.load(Ordering::SeqCst) {
+                return;
+            }
             // Trigger screenshot.
             #[cfg(unix)]
             unsafe { libc::kill(pid as i32, libc::SIGUSR1); }
@@ -71,15 +103,26 @@ pub fn exec_sketch(binary: &Path, screenshot: Option<&Path>, project_dir: Option
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while std::time::Instant::now() < deadline {
                 std::thread::sleep(std::time::Duration::from_millis(200));
-                if screenshot_path.exists() {
+                if screenshot_path.exists() || finished_t.load(Ordering::SeqCst) {
                     break;
                 }
             }
-            // Kill the sketch so boardghost exits cleanly.
+            // Grace: a sketch that ends on its own gets to print its final
+            // output and exit with its own status. Only force a sketch that is
+            // still running when the window closes.
+            let grace_deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(grace_ms);
+            while std::time::Instant::now() < grace_deadline {
+                if finished_t.load(Ordering::SeqCst) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
             #[cfg(unix)]
             unsafe { libc::kill(pid as i32, libc::SIGTERM); }
         });
         let status = child.wait()?;
+        finished.store(true, Ordering::SeqCst);
         let _ = screenshot_thread.join();
         return Ok(status.code().unwrap_or(-1));
     }
