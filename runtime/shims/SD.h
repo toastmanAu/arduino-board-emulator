@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "FS.h"
 // ESP32 Arduino core's SD.h transitively includes SPI.h — sketches commonly
 // declare `SPIClass mySpi;` after only including SD.h. Mirror that here so

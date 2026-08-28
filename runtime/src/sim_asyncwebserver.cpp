@@ -1,4 +1,5 @@
 // AsyncWebServer backing — own cpp-httplib server, per-request state objects.
+#include <cstdint>
 #include "ESPAsyncWebServer.h"
 #include "../third_party/cpp-httplib/httplib.h"
 

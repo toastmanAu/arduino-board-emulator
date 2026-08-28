@@ -16,6 +16,7 @@
 //                                    the child; same end-user behaviour
 //   - BOARDGHOST_MDNS=off           → skip entirely
 
+#include <cstdint>
 #include "ESPmDNS.h"
 #include "WiFi.h"   // for the host IP we publish in A records
 

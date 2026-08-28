@@ -18,6 +18,7 @@
 // overrides it (typical Linux dev: 80 needs root, so the env lets you map
 // to 18080 etc.). On bind failure we log + skip — the sketch keeps running.
 
+#include <cstdint>
 #include "WebServer.h"
 #include "../third_party/cpp-httplib/httplib.h"
 

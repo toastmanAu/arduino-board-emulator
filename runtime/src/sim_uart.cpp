@@ -16,6 +16,7 @@
 // Port 0 stays on stdin/stdout (the global `Serial` instance), unchanged —
 // only HardwareSerial(N>0) routes through this backend.
 
+#include <cstdint>
 #include "Arduino.h"
 #include "sim_devtools.h"
 

@@ -1,6 +1,7 @@
 // freertos/task.h — task creation/scheduling stubs. ESP32 sketches typically
 // reference this via #include <freertos/task.h>.
 #pragma once
+#include <cstdint>
 #include "FreeRTOS.h"
 #include <thread>
 #include <chrono>

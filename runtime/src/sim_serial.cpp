@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <Arduino.h>
 #include <cstdarg>
 #include <cstdio>

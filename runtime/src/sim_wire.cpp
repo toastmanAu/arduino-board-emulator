@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <Wire.h>
 #include "sim_runtime.h"
 #include <cstdio>

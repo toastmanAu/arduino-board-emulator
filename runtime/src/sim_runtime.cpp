@@ -1,3 +1,4 @@
+#include <cstdint>
 #include "sim_runtime.h"
 #include "sim_devtools.h"
 #include "sim_mirror.h"

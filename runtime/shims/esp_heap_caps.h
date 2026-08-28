@@ -3,6 +3,7 @@
 // memory, etc. On the host, all caps map to plain malloc/realloc/free —
 // nothing differentiates the heaps in a simulator. The cap flag is ignored.
 #pragma once
+#include <cstdint>
 #include <stddef.h>
 #include <stdlib.h>
 

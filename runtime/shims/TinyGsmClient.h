@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "WString.h"
 #include "WiFiClient.h"
 

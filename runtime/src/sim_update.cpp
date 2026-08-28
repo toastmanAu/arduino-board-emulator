@@ -15,6 +15,7 @@
 // logic (Update.hasError() ? "FAIL" : "OK") returns the same string in the
 // sim as it would on hardware, given the same upload bytes.
 
+#include <cstdint>
 #include "Update.h"
 #include "Arduino.h"      // Stream base class
 

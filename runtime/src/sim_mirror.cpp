@@ -11,6 +11,7 @@
 // Content routes (/screen.png, /mirror/display, /mirror/audio, /mirror/touch)
 // arrive in Phases 2–4.
 
+#include <cstdint>
 #include "sim_mirror.h"
 #include "sim_capture.h"
 #include "sim_audio.h"

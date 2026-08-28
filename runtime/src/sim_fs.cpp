@@ -1,3 +1,4 @@
+#include <cstdint>
 #include "FS.h"
 #include "SPIFFS.h"
 #include "LittleFS.h"

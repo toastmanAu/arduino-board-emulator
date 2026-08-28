@@ -14,6 +14,7 @@
 //
 // BOARDGHOST_DEVTOOLS=off disables the server (CI, no-network, paranoia).
 
+#include <cstdint>
 #include "sim_devtools.h"
 #include "../third_party/cpp-httplib/httplib.h"
 

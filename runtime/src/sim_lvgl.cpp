@@ -1,3 +1,4 @@
+#include <cstdint>
 #include "sim_lvgl.h"
 #include <lvgl.h>
 // LVGL v9 SDL drivers: lv_sdl_window_create / lv_sdl_mouse_create are not

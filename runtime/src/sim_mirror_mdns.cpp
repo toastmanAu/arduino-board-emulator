@@ -8,6 +8,7 @@
 // pointless on loopback. Best-effort: if avahi isn't running the child exits
 // silently and the mirror still works, you just type the IP.
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

@@ -10,6 +10,7 @@
 // setInsecure() disables peer verification entirely (common in sketches
 // hitting self-signed / rapidly-rotating endpoints).
 
+#include <cstdint>
 #include "WiFiClientSecure.h"
 #include "sim_net.h"
 

@@ -1,4 +1,5 @@
 // espota-protocol OTA receiver. See ArduinoOTA.h for the env contract.
+#include <cstdint>
 #include "ArduinoOTA.h"
 #include "Update.h"
 #include "ESPmDNS.h"

@@ -1,3 +1,4 @@
+#include <cstdint>
 #include "HTTPClient.h"
 #include "sim_net.h"
 #include <cstdio>

@@ -4,6 +4,7 @@
 // producer, one sketch-thread consumer — and getTouchRaw is not real-time the
 // way the audio callback is, so a mutex here is fine; the lock-free constraint
 // was specific to sim_audio).
+#include <cstdint>
 #include "sim_touch_inject.h"
 
 #include <SDL.h>

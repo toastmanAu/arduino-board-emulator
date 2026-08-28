@@ -1,3 +1,4 @@
+#include <cstdint>
 #include "WiFi.h"
 #include "WiFiClient.h"
 #include "sim_net.h"
