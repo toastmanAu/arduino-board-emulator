@@ -21,6 +21,13 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
+// X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS lives here, NOT in <openssl/x509.h>.
+// Some OpenSSL header layouts pull x509v3.h in transitively, which is why this
+// compiled on the author's machine (3.0.2) and failed on ubuntu-latest with
+// "'X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS' was not declared in this scope".
+// Include the header that actually declares the symbol rather than relying on
+// a chain that is free to change between OpenSSL versions.
+#include <openssl/x509v3.h>
 #endif
 
 namespace boardghost_internal {
