@@ -4,6 +4,10 @@ project(boardghost_sketch CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# The sketch's own C files build as gnu17, the dialect the ESP32 toolchain uses.
+# GCC 15 defaults to C23, where bool/true/false are keywords and old-style C
+# that compiles for the device stops compiling here.
+set(CMAKE_C_STANDARD 17)
 
 set(BOARDGHOST_RUNTIME_DIR "{{ runtime_dir }}" CACHE PATH "")
 add_subdirectory("{{ runtime_dir }}" ${CMAKE_BINARY_DIR}/runtime_build)

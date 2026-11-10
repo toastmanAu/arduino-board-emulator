@@ -4,6 +4,9 @@ project(boardghost_runtime CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Third-party C here (LovyanGFX's lgfx_qrcode.h typedefs bool) is pre-C23.
+# GCC 15 defaults to C23 and rejects it; gnu17 is what GCC 11 to 14 built it as.
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(BOARDGHOST_BUILD_TESTS "Build unit tests" ON)
@@ -86,6 +89,21 @@ if(BOARDGHOST_WITH_OPENSSL)
     else()
         set(BOARDGHOST_WITH_OPENSSL OFF CACHE BOOL "" FORCE)
         message(STATUS "BoardGhost: OpenSSL not found — WiFiClientSecure connects via plain TCP (no encryption)")
+    endif()
+endif()
+
+# Optional mbedTLS crypto. The ESP32 Arduino core ships mbedTLS, so sketches
+# call mbedtls_* directly (ECP, MPI, AES, SHA) and expect it to link. The host's
+# libmbedcrypto supplies those symbols; the headers come from the same package.
+# A sketch that never calls mbedTLS is unaffected.
+option(BOARDGHOST_WITH_MBEDCRYPTO "Link the host's libmbedcrypto for sketches that call mbedtls_*" ON)
+if(BOARDGHOST_WITH_MBEDCRYPTO)
+    find_library(BOARDGHOST_MBEDCRYPTO_LIB mbedcrypto)
+    if(BOARDGHOST_MBEDCRYPTO_LIB)
+        target_link_libraries(sim_runtime PUBLIC ${BOARDGHOST_MBEDCRYPTO_LIB})
+        message(STATUS "BoardGhost: libmbedcrypto found at ${BOARDGHOST_MBEDCRYPTO_LIB} — sketch mbedtls_* calls will link")
+    else()
+        message(STATUS "BoardGhost: libmbedcrypto not found — a sketch that calls mbedtls_* will fail to link (install libmbedtls-dev)")
     endif()
 endif()
 
